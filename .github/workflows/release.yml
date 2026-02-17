@@ -1,0 +1,87 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Build extension package
+        run: |
+          cd extension
+          zip -r ../oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip . \
+            -x "*.git*" \
+            -x "test-*.html" \
+            -x "README.md" \
+            -x ".DS_Store"
+          cd ..
+      
+      - name: Generate checksum
+        run: |
+          sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip > checksums.txt
+          cat checksums.txt
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
+            checksums.txt
+          body: |
+            # O'Reilly EPUB Downloader ${{ steps.get_version.outputs.VERSION }}
+            
+            ## 📦 Installation
+            
+            1. Download `oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip`
+            2. Extract the ZIP file
+            3. Open Firefox and go to `about:debugging`
+            4. Click "This Firefox" → "Load Temporary Add-on"
+            5. Select `manifest.json` from the extracted folder
+            
+            ## ✨ Features
+            
+            - ✅ One-click EPUB downloads from O'Reilly Learning Platform
+            - ✅ Complete book content with images and formatting
+            - ✅ Automatic authentication using browser session
+            - ✅ Valid EPUB files compatible with Calibre and other readers
+            - ✅ Progress tracking during download
+            
+            ## 🔐 Verification
+            
+            Verify the download integrity:
+            ```bash
+            sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
+            # Compare with checksums.txt
+            ```
+            
+            ## 📚 Documentation
+            
+            See [README.md](https://github.com/${{ github.repository }}/blob/${{ steps.get_version.outputs.VERSION }}/README.md) for complete documentation.
+            
+            ## ⚠️ Note
+            
+            This is a temporary installation method. For permanent installation, the extension needs to be signed or published to Firefox Add-ons store.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "### ✅ Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Users can now download and install the extension!" >> $GITHUB_STEP_SUMMARY

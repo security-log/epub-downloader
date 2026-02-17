@@ -36,7 +36,17 @@
    - Click "This Firefox" → "Load Temporary Add-on"
    - Select `extension/manifest.json`
 
-### Method 2: Firefox Add-ons Store (Coming Soon)
+### Method 2: Download from Releases
+
+1. Go to [Releases](https://github.com/rubacava/epub-downloader/releases)
+2. Download the latest `oreilly-epub-downloader-vX.X.X.zip`
+3. Extract the ZIP file
+4. Load in Firefox:
+   - Open `about:debugging`
+   - Click "This Firefox" → "Load Temporary Add-on"
+   - Select `manifest.json` from extracted folder
+
+### Method 3: Firefox Add-ons Store (Coming Soon)
 
 Will be published to the official Firefox Add-ons store.
 
@@ -109,6 +119,48 @@ Will be published to the official Firefox Add-ons store.
 - [ ] Search and download integration
 - [ ] Format conversion options
 - [ ] Progress persistence across browser restarts
+
+## 🚀 Creating a Release
+
+The project uses GitHub Actions to automatically build and publish releases.
+
+### For Maintainers:
+
+1. **Update version** in `extension/manifest.json`:
+   ```json
+   {
+     "version": "1.1.0"
+   }
+   ```
+
+2. **Commit changes**:
+   ```bash
+   git add extension/manifest.json
+   git commit -m "Bump version to 1.1.0"
+   ```
+
+3. **Create and push tag**:
+   ```bash
+   git tag v1.1.0
+   git push origin main --tags
+   ```
+
+4. **Automatic release**: GitHub Actions will automatically:
+   - Build the extension package
+   - Generate checksums
+   - Create a GitHub Release
+   - Attach the ZIP file
+
+### Manual Build (if needed):
+
+```bash
+cd extension
+zip -r ../oreilly-epub-downloader-v1.0.0.zip . \
+  -x "*.git*" \
+  -x "test-*.html" \
+  -x "README.md"
+cd ..
+```
 
 ## Contributing
 
