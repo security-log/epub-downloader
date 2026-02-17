@@ -1,23 +1,11 @@
-# Binaries for programs and plugins
-epub-downloader
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
-
 # Build artifacts
 dist/
 build/
+*.zip
+*.xpi
+
+# Extension packaging
+web-ext-artifacts/
 
 # User data - CONFIDENCIAL
 *.db
@@ -39,12 +27,25 @@ logs/
 tmp/
 *.tmp
 
-# Dependency directories
-vendor/
+# Generated icons (keep SVG source)
+extension/icons/icon-16.png
+extension/icons/icon-48.png
+extension/icons/icon-128.png
 
-# Go workspace file
-go.work
-go.work.sum
+# Node modules (if using build tools)
+node_modules/
+package-lock.json
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # env file
 .env
