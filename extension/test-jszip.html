@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test JSZip loading</title>
+</head>
+<body>
+    <h1>Testing JSZip library</h1>
+    <div id="output"></div>
+    
+    <script src="lib/jszip.min.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        
+        output.innerHTML += '<p>typeof JSZip: ' + typeof JSZip + '</p>';
+        
+        if (typeof JSZip !== 'undefined') {
+            output.innerHTML += '<p style="color: green">✅ JSZip is loaded!</p>';
+            
+            try {
+                const zip = new JSZip();
+                output.innerHTML += '<p style="color: green">✅ JSZip instance created</p>';
+                
+                zip.file('test.txt', 'Hello World');
+                output.innerHTML += '<p style="color: green">✅ File added to zip</p>';
+                
+                zip.generateAsync({type: 'blob'}).then(blob => {
+                    output.innerHTML += '<p style="color: green">✅ ZIP generated! Size: ' + blob.size + ' bytes</p>';
+                }).catch(err => {
+                    output.innerHTML += '<p style="color: red">❌ Error: ' + err.message + '</p>';
+                });
+            } catch (e) {
+                output.innerHTML += '<p style="color: red">❌ Error: ' + e.message + '</p>';
+            }
+        } else {
+            output.innerHTML += '<p style="color: red">❌ JSZip is not defined!</p>';
+        }
+    </script>
+</body>
+</html>
