@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>O'Reilly EPUB Downloader</title>
+  <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📚 O'Reilly EPUB Downloader</h1>
+    </header>
+
+    <main>
+      <div id="status-section">
+        <p id="status-message">Open a book on O'Reilly Learning to download it</p>
+      </div>
+
+      <div id="book-info" class="hidden">
+        <h2 id="book-title">Book Title</h2>
+        <p id="book-metadata">
+          <span id="book-isbn"></span>
+        </p>
+      </div>
+
+      <div id="cache-section" class="hidden">
+        <div class="cache-info">
+          <span id="cache-status-text"></span>
+          <div class="cache-actions">
+            <button id="download-cached-btn" class="secondary-btn hidden">Rebuild from Cache</button>
+            <button id="force-download-btn" class="secondary-btn hidden">Force Re-download</button>
+            <button id="clear-cache-btn" class="text-btn hidden">Clear Cache</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="download-section" class="hidden">
+        <button id="download-btn" class="primary-btn">
+          📥 Download EPUB
+        </button>
+      </div>
+
+      <div id="progress-section" class="hidden">
+        <div class="progress-container">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p id="progress-text">Downloading files... 0/0</p>
+      </div>
+
+      <div id="error-section" class="hidden">
+        <p id="error-message" class="error"></p>
+      </div>
+
+      <div id="warning-section" class="hidden">
+        <div class="warning">
+          <p id="warning-message"></p>
+          <details>
+            <summary>Show failed files</summary>
+            <ul id="failed-files-list"></ul>
+          </details>
+        </div>
+      </div>
+
+      <div id="success-section" class="hidden">
+        <p class="success">✅ EPUB downloaded successfully!</p>
+      </div>
+
+      <div id="history-section" class="hidden">
+        <details>
+          <summary class="history-toggle">Download History</summary>
+          <ul id="history-list"></ul>
+          <button id="clear-history-btn" class="text-btn">Clear History</button>
+        </details>
+      </div>
+    </main>
+
+    <footer>
+      <p class="info">Make sure you're logged in to O'Reilly Learning</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
