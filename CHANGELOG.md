@@ -61,5 +61,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.0** - First working release with complete EPUB downloads
 - **0.1.0** - Initial development and research phase
 
-[Unreleased]: https://github.com/rubacava/epub-downloader/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/rubacava/epub-downloader/releases/tag/v1.0.0
+[Unreleased]: https://github.com/security-log/epub-downloader/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/security-log/epub-downloader/releases/tag/v1.0.0

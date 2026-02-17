@@ -28,7 +28,7 @@ Download books from O'Reilly Learning Platform as EPUB files directly in your br
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/rubacava/epub-downloader.git
+   git clone https://github.com/security-log/epub-downloader.git
    cd epub-downloader
    ```
 
@@ -210,4 +210,4 @@ This tool is for **personal use only**. Respect O'Reilly's Terms of Service:
 
 ## Author
 
-**rubacava**
+**security-log**

@@ -38,7 +38,7 @@
 
 ### Method 2: Download from Releases
 
-1. Go to [Releases](https://github.com/rubacava/epub-downloader/releases)
+1. Go to [Releases](https://github.com/security-log/epub-downloader/releases)
 2. Download the latest `oreilly-epub-downloader-vX.X.X.zip`
 3. Extract the ZIP file
 4. Load in Firefox:
