@@ -17,26 +17,7 @@
 
 ## Installation
 
-### Method 1: Development Mode (Temporary)
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/security-log/epub-downloader.git
-   cd epub-downloader
-   ```
-
-2. Generate icons (requires ImageMagick):
-   ```bash
-   cd extension/icons
-   ./generate-icons.sh
-   ```
-
-3. Load in Firefox:
-   - Open `about:debugging`
-   - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `extension/manifest.json`
-
-### Method 2: Download from Releases
+### Download from Releases
 
 1. Go to [Releases](https://github.com/security-log/epub-downloader/releases)
 2. Download the latest `oreilly-epub-downloader-vX.X.X.zip`
@@ -46,11 +27,7 @@
    - Click "This Firefox" → "Load Temporary Add-on"
    - Select `manifest.json` from extracted folder
 
-### Method 3: Firefox Add-ons Store (Coming Soon)
-
-Will be published to the official Firefox Add-ons store.
-
-## 📖 Usage Guide
+## Usage Guide
 
 ### Basic Download
 
@@ -120,51 +97,9 @@ Will be published to the official Firefox Add-ons store.
 - [ ] Format conversion options
 - [ ] Progress persistence across browser restarts
 
-## 🚀 Creating a Release
-
-The project uses GitHub Actions to automatically build and publish releases.
-
-### For Maintainers:
-
-1. **Update version** in `extension/manifest.json`:
-   ```json
-   {
-     "version": "1.1.0"
-   }
-   ```
-
-2. **Commit changes**:
-   ```bash
-   git add extension/manifest.json
-   git commit -m "Bump version to 1.1.0"
-   ```
-
-3. **Create and push tag**:
-   ```bash
-   git tag v1.1.0
-   git push origin main --tags
-   ```
-
-4. **Automatic release**: GitHub Actions will automatically:
-   - Build the extension package
-   - Generate checksums
-   - Create a GitHub Release
-   - Attach the ZIP file
-
-### Manual Build (if needed):
-
-```bash
-cd extension
-zip -r ../oreilly-epub-downloader-v1.0.0.zip . \
-  -x "*.git*" \
-  -x "test-*.html" \
-  -x "README.md"
-cd ..
-```
-
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! Especially with the fron, as it's not my strength (the current version is AI-generated)
 
 1. Fork the repository
 2. Create a feature branch
