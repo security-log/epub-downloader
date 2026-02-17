@@ -47,59 +47,15 @@
 
 6. EPUB will be saved to your Downloads folder
 
-### Troubleshooting
-
-**"Could not detect book information"**
-- Refresh the book page
-- Make sure you're on a book page URL: `https://learning.oreilly.com/library/view/{title}/{isbn}/`
-
-**"JWT token not found"**
-- Log in to O'Reilly Learning
-- Refresh the page and try again
-
-**Extension icon doesn't appear**
-- Run `generate-icons.sh` in the `extension/icons/` directory
-- Reload the extension in `about:debugging`
-
 ## Current Known Issues
 
 - Icons are placeholders (need to run generate-icons.sh)
 - Some debug logging still active
 - No browser notification on completion
 
-## 🗺️ Roadmap
-
-### v1.0 
-- [x] Basic extension structure
-- [x] Book detection from page
-- [x] Download UI with progress tracking
-- [x] Complete EPUB building with JSZip
-- [x] HTML cleaning (remove scripts, fix paths)
-- [x] Proper EPUB validation (Calibre-compatible)
-- [x] Original metadata preservation
-- [x] Image and asset support
-
-### v1.1 (curretn)
-- [ ] Generate proper icons (currently using placeholder)
-- [ ] Better error handling and retry logic
-- [ ] Download queue for multiple books
-- [ ] Success/failure notifications
-- [ ] Cleanup debug logging
-
-### Ideas
-- [ ] Settings page (rate limiting, compression level)
-- [ ] Download history
-- [ ] Custom filename patterns
-- [ ] Chrome support (same Manifest V3)
-- [ ] Cover image preview in popup
-- [ ] Bulk download from library page
-- [ ] Search and download integration
-- [ ] Format conversion options
-- [ ] Progress persistence across browser restarts
-
 ## Contributing
 
-Contributions are welcome! Especially with the fron, as it's not my strength (the current version is AI-generated)
+Contributions are welcome! Especially with the front, as it's not my strength (the current version is AI-generated)
 
 1. Fork the repository
 2. Create a feature branch
