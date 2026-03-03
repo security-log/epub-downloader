@@ -30,6 +30,7 @@ const historyList = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
 
 let currentBookData = null;
+let currentDownloadOurn = null;
 
 /**
  * Initialize popup
@@ -51,6 +52,31 @@ async function init() {
       currentBookData = response.data;
       showBookInfo(currentBookData);
       checkCacheStatus(currentBookData.ourn || currentBookData.isbn);
+
+      try {
+        const ourn = currentBookData.ourn || currentBookData.isbn;
+        const statusResp = await browser.runtime.sendMessage({ type: 'GET_DOWNLOAD_STATUS', ourn });
+        if (statusResp && statusResp.data) {
+          const dlStatus = statusResp.data;
+          if (dlStatus.status === 'running') {
+            currentDownloadOurn = ourn;
+            downloadSection.classList.add('hidden');
+            cacheSection.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            downloadBtn.disabled = true;
+            updateProgress(dlStatus.current, dlStatus.total, dlStatus.message);
+          } else if (dlStatus.status === 'done') {
+            const data = dlStatus.result || {};
+            showSuccess(data.failedFiles, data.fromCache);
+            loadHistory();
+            return;
+          } else if (dlStatus.status === 'error') {
+            showError(dlStatus.error || 'Download failed');
+          }
+        }
+      } catch (err) {
+        console.warn('Could not check download status:', err);
+      }
     } else {
       showStatus('Could not detect book information. Please refresh the page.');
     }
@@ -158,6 +184,8 @@ async function startDownload(downloadOptions = {}) {
     return;
   }
 
+  currentDownloadOurn = currentBookData.ourn || currentBookData.isbn;
+
   try {
     errorSection.classList.add('hidden');
     successSection.classList.add('hidden');
@@ -169,22 +197,19 @@ async function startDownload(downloadOptions = {}) {
 
     updateProgress(0, 100, 'Starting download...');
 
-    const response = await browser.runtime.sendMessage({
+    browser.runtime.sendMessage({
       type: 'DOWNLOAD_EPUB',
       data: { ...currentBookData, downloadOptions }
+    }).catch(err => {
+      console.error('Failed to send DOWNLOAD_EPUB message:', err);
+      showError('Failed to start download: ' + err.message);
+      currentDownloadOurn = null;
     });
-
-    if (response.success) {
-      const data = response.data || {};
-      showSuccess(data.failedFiles, data.fromCache);
-      loadHistory();
-    } else {
-      showError(response.error || 'Download failed');
-    }
 
   } catch (error) {
     console.error('Download error:', error);
     showError('Download failed: ' + error.message);
+    currentDownloadOurn = null;
   }
 }
 
@@ -254,10 +279,22 @@ clearHistoryBtn.addEventListener('click', async () => {
   }
 });
 
-// Listen for progress updates from background script
+// Listen for progress updates and download completion from background script
 browser.runtime.onMessage.addListener((message) => {
   if (message.type === 'DOWNLOAD_PROGRESS') {
     updateProgress(message.current, message.total, message.message);
+  }
+
+  if (message.type === 'DOWNLOAD_COMPLETE' && message.ourn === currentDownloadOurn) {
+    const data = message.data || {};
+    showSuccess(data.failedFiles, data.fromCache);
+    loadHistory();
+    currentDownloadOurn = null;
+  }
+
+  if (message.type === 'DOWNLOAD_FAILED' && message.ourn === currentDownloadOurn) {
+    showError(message.error || 'Download failed');
+    currentDownloadOurn = null;
   }
 });
 
