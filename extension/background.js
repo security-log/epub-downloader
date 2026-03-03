@@ -5,13 +5,27 @@
 
 console.log('O\'Reilly EPUB Downloader - Background script loaded');
 
+const activeDownloads = new Map();
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background received message:', message.type);
 
   if (message.type === 'DOWNLOAD_EPUB') {
-    handleDownloadRequest(message.data)
-      .then(result => sendResponse({ success: true, data: result }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+    const ourn = message.data.ourn || message.data.isbn;
+    const existing = activeDownloads.get(ourn);
+    if (existing && existing.status === 'running') {
+      sendResponse({ success: true, queued: true, alreadyRunning: true });
+      return true;
+    }
+    activeDownloads.set(ourn, { status: 'running', current: 0, total: 100, message: 'Starting...' });
+    sendResponse({ success: true, queued: true });
+    handleDownloadRequest(message.data, ourn).catch(() => {});
+    return true;
+  }
+
+  if (message.type === 'GET_DOWNLOAD_STATUS') {
+    const entry = activeDownloads.get(message.ourn) || null;
+    sendResponse({ success: true, data: entry });
     return true;
   }
 
@@ -55,18 +69,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleDownloadRequest(bookData) {
+async function handleDownloadRequest(bookData, ourn) {
   console.log('Starting EPUB download for:', bookData.title);
-
   try {
     const options = bookData.downloadOptions || { useCache: true, forceRefresh: false };
     const result = await downloadEPUB(bookData, options);
 
     console.log('Download completed successfully');
+    activeDownloads.set(ourn, { status: 'done', result });
+    browser.runtime.sendMessage({ type: 'DOWNLOAD_COMPLETE', ourn, data: result }).catch(() => {});
     return result;
 
   } catch (error) {
     console.error('Download failed:', error);
+    activeDownloads.set(ourn, { status: 'error', error: error.message });
+    browser.runtime.sendMessage({ type: 'DOWNLOAD_FAILED', ourn, error: error.message }).catch(() => {});
     throw error;
   }
 }

@@ -10,6 +10,8 @@ const CONCURRENCY = 10;
 const STAGGER_MS = 50;
 const RATE_LIMIT_DELAY = 100;
 
+let currentDownloadOurn = null;
+
 /**
  * Download EPUB from O'Reilly
  * @param {Object} bookData - Book info from content script
@@ -18,6 +20,7 @@ const RATE_LIMIT_DELAY = 100;
 async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: false }) {
   console.log('Starting EPUB download for:', bookData.title);
   const ourn = bookData.ourn || bookData.isbn;
+  currentDownloadOurn = ourn;
 
   try {
     let metadata;
@@ -112,10 +115,12 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     await addToHistory(metadata, bookOurn, filename, failedFiles);
 
     sendProgress(100, 100, 'Download complete!');
+    currentDownloadOurn = null;
     return { success: true, filename, failedFiles, fromCache };
 
   } catch (error) {
     console.error('Download failed:', error);
+    currentDownloadOurn = null;
     throw error;
   }
 }
@@ -386,6 +391,14 @@ async function addToHistory(metadata, ourn, filename, failedFiles) {
  * Send progress update to UI
  */
 function sendProgress(current, total, message) {
+  if (currentDownloadOurn && typeof activeDownloads !== 'undefined') {
+    const entry = activeDownloads.get(currentDownloadOurn);
+    if (entry && entry.status === 'running') {
+      entry.current = current;
+      entry.total = total;
+      entry.message = message;
+    }
+  }
   browser.runtime.sendMessage({
     type: 'DOWNLOAD_PROGRESS',
     current,
