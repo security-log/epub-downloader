@@ -50,5 +50,12 @@
       "resources": ["lib/jszip.min.js"],
       "matches": ["https://learning.oreilly.com/*"]
     }
-  ]
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "oreilly-epub-downloader@security-log",
+      "strict_min_version": "115.0"
+    }
+  }
 }

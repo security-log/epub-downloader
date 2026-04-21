@@ -9,18 +9,40 @@ const API_BASE = 'https://learning.oreilly.com';
 const CONCURRENCY = 10;
 const STAGGER_MS = 50;
 const RATE_LIMIT_DELAY = 100;
+const PRE_COMPRESSED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-let currentDownloadOurn = null;
+function zipOptions(mediaType) {
+  if (PRE_COMPRESSED_TYPES.has(mediaType)) {
+    return { compression: 'STORE' };
+  }
+  return {};
+}
 
 /**
  * Download EPUB from O'Reilly
  * @param {Object} bookData - Book info from content script
- * @param {Object} options - { useCache: true, forceRefresh: false }
+ * @param {Object} options - { useCache: true, forceRefresh: false, rebuildOnly: false }
+ * @param {Function} [onProgress] - Callback (current, total, message) for progress updates
  */
-async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: false }) {
+async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: false }, onProgress) {
   console.log('Starting EPUB download for:', bookData.title);
+
+  // Local closure — no global state access (REL-02, D-06)
+  const sendProgress = (current, total, message) => {
+    if (typeof onProgress === 'function') {
+      onProgress(current, total, message);
+    }
+    browser.runtime.sendMessage({
+      type: 'DOWNLOAD_PROGRESS',
+      current,
+      total,
+      message
+    }).catch(() => {
+      // Popup might be closed, ignore error
+    });
+  };
+
   const ourn = bookData.ourn || bookData.isbn;
-  currentDownloadOurn = ourn;
 
   try {
     let metadata;
@@ -47,25 +69,59 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
       complete: false
     });
 
+    // Construct the JSZip instance that will accumulate all files (PERF-01)
+    const zip = new JSZip();
+
+    // rebuildOnly: assemble EPUB from IndexedDB, no network (BUG-04, D-03, D-04)
+    if (options.rebuildOnly) {
+      sendProgress(10, 100, 'Checking cache...');
+
+      const manifest = await BookCache.getFileManifest(bookOurn);
+      if (!manifest) {
+        throw new Error(
+          'Rebuild failed: no file manifest found for this book. ' +
+          'Download the book normally first to populate the cache.'
+        );
+      }
+
+      const cachedPaths = await BookCache.getCachedFilePaths(bookOurn);
+      const missingFiles = manifest.filter(url => !cachedPaths.has(url));
+      if (missingFiles.length > 0) {
+        throw new Error(
+          `Rebuild failed: ${missingFiles.length} file(s) missing from cache:\n` +
+          missingFiles.join('\n')
+        );
+      }
+
+      sendProgress(50, 100, `Building EPUB from ${cachedPaths.size} cached files...`);
+      // mimetype MUST be first and MUST use STORE (EPUB spec requirement)
+      zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+      // buildEPUB loads all cached files directly from IndexedDB
+      const epubBlob = await buildEPUB(zip, bookOurn);
+      sendProgress(95, 100, 'Saving file...');
+      const filename = sanitizeFilename(`${metadata.title}-${metadata.isbn}.epub`);
+      await saveFile(epubBlob, filename);
+      await addToHistory(metadata, bookOurn, filename, []);
+      sendProgress(100, 100, 'Download complete!');
+      return { success: true, filename, failedFiles: [], fromCache: cachedPaths.size };
+    }
+
     sendProgress(10, 100, 'Getting file list...');
     const files = await getAllFiles(metadata.files, bookData.jwtToken);
     console.log(`Found ${files.length} files to download`);
 
-    let cachedFiles = new Map();
+    // Persist expected file list so rebuildOnly can diff against cache (BUG-04, D-04)
+    await BookCache.storeFileManifest(bookOurn, files.map(f => f.full_path));
+
     let filesToDownload = files;
     let fromCache = 0;
 
     if (options.useCache && !options.forceRefresh) {
+      // Single IDB pass to check cache (PERF-03: getCachedFilePaths replaces getCachedFilePaths+getFiles)
       const cachedPaths = await BookCache.getCachedFilePaths(bookOurn);
       if (cachedPaths.size > 0) {
         fromCache = cachedPaths.size;
         sendProgress(15, 100, `Found ${fromCache}/${files.length} files in cache`);
-
-        const cachedEntries = await BookCache.getFiles(bookOurn);
-        for (const entry of cachedEntries) {
-          cachedFiles.set(entry.fullPath, entry);
-        }
-
         filesToDownload = files.filter(f => !cachedPaths.has(f.full_path));
       }
     }
@@ -75,27 +131,9 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
       : `Downloading ${filesToDownload.length} files...`;
     sendProgress(20, 100, downloadMsg);
 
-    const { downloaded, failedFiles } = await downloadAllFiles(
-      filesToDownload, bookData.jwtToken, metadata, bookOurn, files.length, fromCache
+    const { failedFiles } = await downloadAllFiles(
+      zip, filesToDownload, bookData.jwtToken, metadata, bookOurn, files.length, fromCache, sendProgress
     );
-
-    for (const [path, entry] of cachedFiles) {
-      const fullPath = `OEBPS/${path}`;
-      if (!downloaded.has(fullPath)) {
-        downloaded.set(fullPath, {
-          content: entry.content,
-          mediaType: entry.mediaType,
-          kind: entry.kind
-        });
-
-        if (entry.mediaType === 'application/oebps-package+xml') {
-          downloaded.set('META-INF/container.xml', {
-            content: generateContainerXml(fullPath),
-            mediaType: 'application/xml'
-          });
-        }
-      }
-    }
 
     const totalCached = fromCache + filesToDownload.length - failedFiles.length;
     await BookCache.saveBookMeta(bookOurn, {
@@ -106,7 +144,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     });
 
     sendProgress(90, 100, 'Building EPUB file...');
-    const epubBlob = await buildEPUB(downloaded);
+    const epubBlob = await buildEPUB(zip, bookOurn);
 
     sendProgress(95, 100, 'Saving file...');
     const filename = sanitizeFilename(`${metadata.title}-${metadata.isbn}.epub`);
@@ -115,12 +153,10 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     await addToHistory(metadata, bookOurn, filename, failedFiles);
 
     sendProgress(100, 100, 'Download complete!');
-    currentDownloadOurn = null;
     return { success: true, filename, failedFiles, fromCache };
 
   } catch (error) {
     console.error('Download failed:', error);
-    currentDownloadOurn = null;
     throw error;
   }
 }
@@ -129,24 +165,30 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
  * Get book metadata from API
  */
 async function getBookMetadata(identifier, jwtToken) {
-  const url = `${API_BASE}/api/v2/epubs/${identifier}/`;
+  const headers = {
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${jwtToken}`
+  };
 
-  const response = await fetchWithRetry(url, {
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${jwtToken}`
-    }
-  });
+  const firstUrl = `${API_BASE}/api/v2/epubs/${identifier}/`;
+  const firstResponse = await fetchWithRetry(firstUrl, { headers });
 
-  if (!response.ok) {
-    if (identifier.includes(':book:')) {
-      const articleUrn = identifier.replace(':book:', ':article:');
-      return getBookMetadata(articleUrn, jwtToken);
-    }
-    throw new Error(`Failed to fetch metadata: ${response.status}`);
+  if (firstResponse.ok) {
+    return await firstResponse.json();
   }
 
-  return await response.json();
+  if (identifier.includes(':book:')) {
+    const articleUrn = identifier.replace(':book:', ':article:');
+    const secondUrl = `${API_BASE}/api/v2/epubs/${articleUrn}/`;
+    const secondResponse = await fetchWithRetry(secondUrl, { headers });
+
+    if (secondResponse.ok) {
+      return await secondResponse.json();
+    }
+    throw new Error(`Failed to fetch metadata: ${secondResponse.status}`);
+  }
+
+  throw new Error(`Failed to fetch metadata: ${firstResponse.status}`);
 }
 
 /**
@@ -170,7 +212,17 @@ async function getAllFiles(filesUrl, jwtToken) {
 
     const data = await response.json();
     allFiles = allFiles.concat(data.results);
-    nextUrl = data.next;
+    const rawNext = data.next;
+    if (rawNext != null) {
+      if (typeof rawNext !== 'string') {
+        throw new Error(`Unexpected pagination URL type: ${typeof rawNext}`);
+      }
+      const nextHostname = new URL(rawNext).hostname;
+      if (!nextHostname.endsWith('.oreilly.com') && nextHostname !== 'learning.oreilly.com') {
+        throw new Error(`Pagination URL left oreilly.com domain: ${rawNext}`);
+      }
+    }
+    nextUrl = rawNext ?? null;
 
     await sleep(RATE_LIMIT_DELAY);
   }
@@ -181,16 +233,12 @@ async function getAllFiles(filesUrl, jwtToken) {
 /**
  * Download all files using concurrency pool with retry
  */
-async function downloadAllFiles(files, jwtToken, metadata, bookOurn, totalFileCount, fromCache) {
-  const downloaded = new Map();
+async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalFileCount, fromCache, sendProgress) {
   const failedFiles = [];
   let completedFiles = fromCache;
 
-  downloaded.set('mimetype', {
-    content: 'application/epub+zip',
-    mediaType: 'text/plain',
-    uncompressed: true
-  });
+  // mimetype MUST be added first and MUST use STORE (EPUB spec requirement)
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
 
   const pool = new ConcurrencyPool(CONCURRENCY, STAGGER_MS);
 
@@ -210,7 +258,7 @@ async function downloadAllFiles(files, jwtToken, metadata, bookOurn, totalFileCo
     }
 
     const { file, content } = result;
-    const fullPath = `OEBPS/${file.full_path}`;
+    const fullPath = `OEBPS/${sanitizeZipPath(file.full_path)}`;
     let processedContent = content;
 
     const isHTML = file.media_type === 'application/xhtml+xml' || file.media_type === 'text/html';
@@ -219,17 +267,10 @@ async function downloadAllFiles(files, jwtToken, metadata, bookOurn, totalFileCo
     }
 
     if (file.media_type === 'application/oebps-package+xml') {
-      downloaded.set('META-INF/container.xml', {
-        content: generateContainerXml(fullPath),
-        mediaType: 'application/xml'
-      });
+      zip.file('META-INF/container.xml', generateContainerXml(fullPath), { compression: 'STORE' });
     }
 
-    downloaded.set(fullPath, {
-      content: processedContent,
-      mediaType: file.media_type,
-      kind: file.kind
-    });
+    zip.file(fullPath, processedContent, zipOptions(file.media_type));
 
     BookCache.saveFile(bookOurn, file.full_path, {
       content: processedContent,
@@ -242,17 +283,14 @@ async function downloadAllFiles(files, jwtToken, metadata, bookOurn, totalFileCo
 
   await pool.run(tasks, onComplete);
 
-  downloaded.set('META-INF/com.apple.ibooks.display-options.xml', {
-    content: `<?xml version="1.0" encoding="UTF-8"?>
+  zip.file('META-INF/com.apple.ibooks.display-options.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <display_options>
   <platform name="*">
     <option name="specified-fonts">true</option>
   </platform>
-</display_options>`,
-    mediaType: 'application/xml'
-  });
+</display_options>`, {});
 
-  return { downloaded, failedFiles };
+  return { failedFiles };
 }
 
 /**
@@ -265,6 +303,10 @@ async function downloadFileWithRetry(url, jwtToken) {
       'Authorization': `Bearer ${jwtToken}`
     }
   });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${url}`);
+  }
 
   const contentType = response.headers.get('content-type') || '';
 
@@ -281,7 +323,7 @@ function generateContainerXml(opfPath) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="${opfPath}" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="${escapeXml(opfPath)}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>`;
 }
@@ -289,22 +331,23 @@ function generateContainerXml(opfPath) {
 /**
  * Build EPUB file from downloaded content
  */
-async function buildEPUB(files) {
-  console.log('Building EPUB with', files.size, 'files');
+async function buildEPUB(zip, ourn) {
+  console.log('Building EPUB, loading cached files...');
 
   if (typeof JSZip === 'undefined') {
     throw new Error('JSZip library not loaded');
   }
 
-  const zip = new JSZip();
+  // Load cached files one at a time from IndexedDB (PERF-01: no Map accumulation)
+  // cachedPaths and filesToDownload are disjoint by construction — no duplicate check needed
+  const cached = await BookCache.getCachedFiles(ourn);
+  for (const [fullPath, fileData] of cached) {
+    const zipPath = `OEBPS/${sanitizeZipPath(fullPath)}`;
+    zip.file(zipPath, fileData.content, zipOptions(fileData.mediaType));
 
-  for (const [path, fileData] of files) {
-    const { content, uncompressed } = fileData;
-    const options = {};
-    if (path === 'mimetype' || uncompressed) {
-      options.compression = 'STORE';
+    if (fileData.mediaType === 'application/oebps-package+xml') {
+      zip.file('META-INF/container.xml', generateContainerXml(zipPath), { compression: 'STORE' });
     }
-    zip.file(path, content, options);
   }
 
   console.log('Generating EPUB ZIP...');
@@ -323,8 +366,11 @@ async function buildEPUB(files) {
  * Clean HTML content and fix relative paths
  */
 function cleanHTML(content, ourn, filePath) {
-  content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  content = content.replace(/<link[^>]*>/gi, '');
+  // SEC-02: use DOMParser to remove script elements structurally
+  // BUG-02: do NOT remove <link> elements — stylesheets must survive
+  const doc = new DOMParser().parseFromString(content, 'text/html');
+  doc.querySelectorAll('script').forEach(el => el.remove());
+  content = doc.documentElement.outerHTML;
 
   if (ourn) {
     const apiPath = `/api/v2/epubs/${ourn}/files/`;
@@ -356,14 +402,23 @@ function cleanHTML(content, ourn, filePath) {
  */
 async function saveFile(blob, filename) {
   const url = URL.createObjectURL(blob);
+  let downloadStarted = false;
 
-  await browser.downloads.download({
-    url: url,
-    filename: filename,
-    saveAs: true
-  });
-
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  try {
+    await browser.downloads.download({
+      url: url,
+      filename: filename,
+      saveAs: true
+    });
+    downloadStarted = true;
+    // Browser download manager needs the URL alive briefly; revoke after 10 s
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } finally {
+    if (!downloadStarted) {
+      // Exception thrown before or during download — revoke immediately
+      URL.revokeObjectURL(url);
+    }
+  }
 }
 
 /**
@@ -388,28 +443,6 @@ async function addToHistory(metadata, ourn, filename, failedFiles) {
 }
 
 /**
- * Send progress update to UI
- */
-function sendProgress(current, total, message) {
-  if (currentDownloadOurn && typeof activeDownloads !== 'undefined') {
-    const entry = activeDownloads.get(currentDownloadOurn);
-    if (entry && entry.status === 'running') {
-      entry.current = current;
-      entry.total = total;
-      entry.message = message;
-    }
-  }
-  browser.runtime.sendMessage({
-    type: 'DOWNLOAD_PROGRESS',
-    current,
-    total,
-    message
-  }).catch(() => {
-    // Popup might be closed, ignore error
-  });
-}
-
-/**
  * Sanitize filename for download
  */
 function sanitizeFilename(filename) {
@@ -420,6 +453,30 @@ function sanitizeFilename(filename) {
     .substring(0, 200);
 }
 
+/**
+ * Escape special XML characters in a string to prevent XML injection
+ */
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Sanitize a path from the API to prevent ZIP path traversal.
+ * Removes backslashes, collapses '.' and '..' segments, and strips
+ * any leading slash so the result is always a relative path.
+ */
+function sanitizeZipPath(p) {
+  return String(p)
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(seg => seg !== '..' && seg !== '.' && seg !== '')
+    .join('/');
 }

@@ -7,11 +7,31 @@ console.log('O\'Reilly EPUB Downloader - Background script loaded');
 
 const activeDownloads = new Map();
 
+// Restore activeDownloads from session storage after worker restart (D-07, REL-01)
+// D-08: no auto-resume — restored entries are read-only context for the popup
+browser.storage.session.get('activeDownloads').then(({ activeDownloads: saved }) => {
+  if (saved && typeof saved === 'object') {
+    for (const [ourn, entry] of Object.entries(saved)) {
+      activeDownloads.set(ourn, entry);
+    }
+    console.log('Restored', activeDownloads.size, 'download entries from session storage');
+  }
+}).catch(err => console.warn('Failed to restore activeDownloads:', err));
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background received message:', message.type);
 
+  if (sender.id !== browser.runtime.id) {
+    console.warn('Rejected message from unknown sender:', sender.id);
+    return;
+  }
+
   if (message.type === 'DOWNLOAD_EPUB') {
     const ourn = message.data.ourn || message.data.isbn;
+    if (!ourn) {
+      sendResponse({ success: false, error: 'Missing book identifier (ourn or isbn)' });
+      return true;
+    }
     const existing = activeDownloads.get(ourn);
     if (existing && existing.status === 'running') {
       sendResponse({ success: true, queued: true, alreadyRunning: true });
@@ -64,25 +84,37 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'GET_BOOK_INFO') {
-    return false;
-  }
 });
 
 async function handleDownloadRequest(bookData, ourn) {
   console.log('Starting EPUB download for:', bookData.title);
   try {
     const options = bookData.downloadOptions || { useCache: true, forceRefresh: false };
-    const result = await downloadEPUB(bookData, options);
+    const onProgress = (current, total, message) => {
+      const entry = activeDownloads.get(ourn);
+      if (entry && entry.status === 'running') {
+        entry.current = current;
+        entry.total = total;
+        entry.message = message;
+        browser.storage.session.set({ activeDownloads: Object.fromEntries(activeDownloads) })
+          .catch(err => console.warn('session sync failed:', err));
+      }
+    };
+
+    const result = await downloadEPUB(bookData, options, onProgress);
 
     console.log('Download completed successfully');
     activeDownloads.set(ourn, { status: 'done', result });
+    browser.storage.session.set({ activeDownloads: Object.fromEntries(activeDownloads) })
+      .catch(err => console.warn('session sync failed:', err));
     browser.runtime.sendMessage({ type: 'DOWNLOAD_COMPLETE', ourn, data: result }).catch(() => {});
     return result;
 
   } catch (error) {
     console.error('Download failed:', error);
     activeDownloads.set(ourn, { status: 'error', error: error.message });
+    browser.storage.session.set({ activeDownloads: Object.fromEntries(activeDownloads) })
+      .catch(err => console.warn('session sync failed:', err));
     browser.runtime.sendMessage({ type: 'DOWNLOAD_FAILED', ourn, error: error.message }).catch(() => {});
     throw error;
   }
