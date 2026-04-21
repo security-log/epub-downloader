@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "O'Reilly EPUB Downloader",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Download books from O'Reilly Learning Platform as EPUB files",
   "author": "Sebastian Emilio Kremarik | security-log",
   
