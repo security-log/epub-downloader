@@ -86,9 +86,17 @@ function extractBookInfo() {
 function getJWTToken() {
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
+    const trimmed = cookie.trim();
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const name = trimmed.slice(0, eqIdx);
+    const rawValue = trimmed.slice(eqIdx + 1);
     if (name === 'orm-jwt') {
-      return value;
+      try {
+        return decodeURIComponent(rawValue);
+      } catch (_) {
+        return rawValue;
+      }
     }
   }
   return null;

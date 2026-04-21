@@ -5,7 +5,7 @@
 
 const BookCache = (() => {
   const DB_NAME = 'epub-downloader-cache';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let dbInstance = null;
 
   function openDB() {
@@ -24,6 +24,10 @@ const BookCache = (() => {
         if (!db.objectStoreNames.contains('files')) {
           const fileStore = db.createObjectStore('files', { keyPath: ['ourn', 'fullPath'] });
           fileStore.createIndex('byBook', 'ourn', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('manifests')) {
+          db.createObjectStore('manifests', { keyPath: 'ourn' });
         }
       };
 
@@ -89,9 +93,10 @@ const BookCache = (() => {
   async function deleteBook(ourn) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(['books', 'files'], 'readwrite');
+      const tx = db.transaction(['books', 'files', 'manifests'], 'readwrite');
 
       tx.objectStore('books').delete(ourn);
+      tx.objectStore('manifests').delete(ourn);
 
       const fileStore = tx.objectStore('files');
       const index = fileStore.index('byBook');
@@ -157,6 +162,28 @@ const BookCache = (() => {
     });
   }
 
+  async function getCachedFiles(ourn) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const result = new Map();
+      const tx = db.transaction('files', 'readonly');
+      const index = tx.objectStore('files').index('byBook');
+      const request = index.openCursor(IDBKeyRange.only(ourn));
+
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (cursor) {
+          const { fullPath, content, mediaType, kind } = cursor.value;
+          result.set(fullPath, { content, mediaType, kind });
+          cursor.continue();
+        }
+      };
+
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   async function getFiles(ourn) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -180,6 +207,33 @@ const BookCache = (() => {
     });
   }
 
+  async function storeFileManifest(ourn, fileUrlArray) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('manifests', 'readwrite');
+      tx.objectStore('manifests').put({
+        ourn,
+        urls: fileUrlArray,
+        storedAt: Date.now()
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function getFileManifest(ourn) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('manifests', 'readonly');
+      const request = tx.objectStore('manifests').get(ourn);
+      request.onsuccess = () => {
+        const record = request.result;
+        resolve(record ? record.urls : null);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   return {
     openDB,
     getBookMeta,
@@ -189,7 +243,10 @@ const BookCache = (() => {
     getFile,
     saveFile,
     getCachedFilePaths,
+    getCachedFiles,
     getFiles,
-    clearAll
+    clearAll,
+    storeFileManifest,
+    getFileManifest
   };
 })();
