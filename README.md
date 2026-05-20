@@ -78,3 +78,12 @@ This tool is for **personal use only**.
 **Use responsibly and respect content creators.**
 
 **⭐ Star this repo** if you find it useful!
+## Star History
+
+<a href="https://www.star-history.com/?repos=security-log%2Fepub-downloader&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&legend=top-left" />
+ </picture>
+</a>
