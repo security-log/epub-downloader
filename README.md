@@ -1,6 +1,8 @@
 # O'Reilly EPUB Downloader
 
 **Firefox Extension** for downloading books from O'Reilly Learning Platform as EPUB files.
+<img width="2540" height="1393" alt="image" src="https://github.com/user-attachments/assets/75d7c3be-7d00-4301-aad7-543ed2799aaa" />
+
 
 ## Quick Start
 
