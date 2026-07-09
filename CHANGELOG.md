@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Popup now shows an "in progress" list of every active download (not just the book matching the current tab), so switching pages mid-download no longer hides its progress
+- Confirmation prompt before starting a second download while another book is already downloading, to avoid silently doubling concurrent network load
+
 ### Planned
 - Generate proper extension icons (currently using placeholders)
 - Better error handling with retry logic
-- Download queue for multiple books
 - Browser notifications on completion
 - Settings page for customization
 
