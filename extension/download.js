@@ -27,6 +27,8 @@ function zipOptions(mediaType) {
 async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: false }, onProgress) {
   console.log('Starting EPUB download for:', bookData.title);
 
+  const ourn = bookData.ourn || bookData.isbn;
+
   // Local closure — no global state access (REL-02, D-06)
   const sendProgress = (current, total, message) => {
     if (typeof onProgress === 'function') {
@@ -34,6 +36,8 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     }
     browser.runtime.sendMessage({
       type: 'DOWNLOAD_PROGRESS',
+      ourn,
+      title: bookData.title,
       current,
       total,
       message
@@ -41,8 +45,6 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
       // Popup might be closed, ignore error
     });
   };
-
-  const ourn = bookData.ourn || bookData.isbn;
 
   try {
     let metadata;
