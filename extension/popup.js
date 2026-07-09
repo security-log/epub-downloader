@@ -14,6 +14,7 @@ const downloadBtn = document.getElementById('download-btn');
 const progressSection = document.getElementById('progress-section');
 const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
+const progressPct = document.getElementById('progress-pct');
 const errorSection = document.getElementById('error-section');
 const errorMessage = document.getElementById('error-message');
 const successSection = document.getElementById('success-section');
@@ -160,7 +161,12 @@ async function checkCacheStatus(ourn) {
   try {
     const response = await browser.runtime.sendMessage({ type: 'GET_CACHE_STATS', ourn });
     if (response.success && response.data.cachedFiles > 0) {
-      cacheStatusText.textContent = `${response.data.cachedFiles} files cached for this book`;
+      cacheStatusText.innerHTML = '';
+      const count = document.createElement('span');
+      count.className = 'n';
+      count.textContent = response.data.cachedFiles;
+      cacheStatusText.appendChild(count);
+      cacheStatusText.appendChild(document.createTextNode(' files cached for this book'));
       downloadCachedBtn.classList.remove('hidden');
       forceDownloadBtn.classList.remove('hidden');
       clearCacheBtn.classList.remove('hidden');
@@ -180,7 +186,7 @@ function showBookInfo(data) {
   downloadSection.classList.remove('hidden');
 
   bookTitle.textContent = data.title;
-  bookIsbn.textContent = `ISBN: ${data.isbn || 'N/A'}`;
+  bookIsbn.textContent = data.isbn || 'N/A';
 }
 
 /**
@@ -230,7 +236,7 @@ function showSuccess(failedFiles, fromCache) {
 function updateProgress(current, total, message = '') {
   const percentage = Math.round((current / total) * 100);
   progressBar.style.width = percentage + '%';
-  progressBar.textContent = percentage + '%';
+  progressPct.textContent = percentage + '%';
 
   if (message) {
     progressText.textContent = message;
