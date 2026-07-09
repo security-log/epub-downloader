@@ -135,12 +135,14 @@ function renderActiveDownloads() {
 
     const titleSpan = document.createElement('span');
     titleSpan.className = 'adl-title';
-    titleSpan.textContent = dl.title;
-    titleSpan.title = dl.title;
+    titleSpan.textContent = dl.title || dl.ourn;
+    titleSpan.title = dl.title || dl.ourn;
 
     const progressSpan = document.createElement('span');
     progressSpan.className = 'adl-progress';
-    const percentage = dl.total ? Math.round((dl.current / dl.total) * 100) : 0;
+    const total = Number(dl.total) || 0;
+    const current = Number(dl.current) || 0;
+    const percentage = total > 0 ? Math.min(100, Math.max(0, Math.round((current / total) * 100))) : 0;
     progressSpan.textContent = dl.message ? `${percentage}% — ${dl.message}` : `${percentage}%`;
 
     li.appendChild(titleSpan);
