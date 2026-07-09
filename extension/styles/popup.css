@@ -123,9 +123,32 @@ footer {
   text-align: center;
 }
 
+footer > * + * {
+  margin-top: 4px;
+}
+
 .info {
   font-size: 11px;
   color: var(--ink-faint);
+}
+
+.credit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.01em;
+}
+
+.credit a {
+  color: var(--ink-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+
+.credit a:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
 }
 
 /* Status Section */
