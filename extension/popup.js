@@ -290,6 +290,10 @@ async function startDownload(downloadOptions = {}, confirmed = false) {
  */
 function showConfirmDialog(activeBook, downloadOptions) {
   confirmMessage.textContent = `"${activeBook.title}" is currently downloading. Download this book at the same time?`;
+  errorSection.classList.add('hidden');
+  successSection.classList.add('hidden');
+  warningSection.classList.add('hidden');
+  progressSection.classList.add('hidden');
   confirmSection.classList.remove('hidden');
   downloadSection.classList.add('hidden');
   cacheSection.classList.add('hidden');

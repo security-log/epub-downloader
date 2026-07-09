@@ -270,6 +270,8 @@ footer {
 
 #active-downloads-list {
   list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 #active-downloads-list li {
