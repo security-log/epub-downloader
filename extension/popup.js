@@ -28,9 +28,19 @@ const failedFilesList = document.getElementById('failed-files-list');
 const historySection = document.getElementById('history-section');
 const historyList = document.getElementById('history-list');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
+const confirmSection = document.getElementById('confirm-section');
+const confirmMessage = document.getElementById('confirm-message');
+const confirmYesBtn = document.getElementById('confirm-yes-btn');
+const confirmNoBtn = document.getElementById('confirm-no-btn');
+const activeDownloadsSection = document.getElementById('active-downloads-section');
+const activeDownloadsList = document.getElementById('active-downloads-list');
 
 let currentBookData = null;
 let currentDownloadOurn = null;
+// Local mirror of background's activeDownloads, keyed by ourn. Updated in
+// place from broadcast messages instead of re-querying the background
+// script on every progress tick (which fires many times per second).
+const activeDownloadsMap = new Map();
 
 /**
  * Initialize popup
@@ -82,11 +92,63 @@ async function init() {
     }
 
     loadHistory();
+    loadActiveDownloads();
 
   } catch (error) {
     console.error('Error initializing popup:', error);
     showError('Failed to initialize extension: ' + error.message);
   }
+}
+
+/**
+ * Seed activeDownloadsMap from the background script (across every book,
+ * not just the one matching the currently active tab). Only needed once on
+ * open — after that, broadcast messages keep the map current.
+ */
+async function loadActiveDownloads() {
+  try {
+    const response = await browser.runtime.sendMessage({ type: 'GET_ALL_DOWNLOADS' });
+    if (!response.success) return;
+    activeDownloadsMap.clear();
+    for (const dl of response.data) {
+      activeDownloadsMap.set(dl.ourn, dl);
+    }
+    renderActiveDownloads();
+  } catch (err) {
+    console.warn('Could not load active downloads:', err);
+  }
+}
+
+function renderActiveDownloads() {
+  // The current tab's book already has its own progress bar — don't show it twice.
+  const list = [...activeDownloadsMap.values()].filter(dl => dl.ourn !== currentDownloadOurn);
+
+  if (list.length === 0) {
+    activeDownloadsSection.classList.add('hidden');
+    activeDownloadsList.innerHTML = '';
+    return;
+  }
+
+  activeDownloadsList.innerHTML = '';
+  for (const dl of list) {
+    const li = document.createElement('li');
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'adl-title';
+    titleSpan.textContent = dl.title;
+    titleSpan.title = dl.title;
+
+    const progressSpan = document.createElement('span');
+    progressSpan.className = 'adl-progress';
+    const percentage = dl.total ? Math.round((dl.current / dl.total) * 100) : 0;
+    progressSpan.textContent = dl.message ? `${percentage}% — ${dl.message}` : `${percentage}%`;
+
+    li.appendChild(titleSpan);
+    li.appendChild(progressSpan);
+    activeDownloadsList.appendChild(li);
+  }
+
+  activeDownloadsSection.classList.remove('hidden');
 }
 
 /**
@@ -176,17 +238,35 @@ function updateProgress(current, total, message = '') {
 }
 
 /**
- * Start download with given options
+ * Start download with given options. Pass confirmed=true to proceed even
+ * though another book is already downloading (bypasses the confirm prompt).
  */
-async function startDownload(downloadOptions = {}) {
+async function startDownload(downloadOptions = {}, confirmed = false) {
   if (!currentBookData) {
     showError('No book data available');
     return;
   }
 
-  currentDownloadOurn = currentBookData.ourn || currentBookData.isbn;
+  const ourn = currentBookData.ourn || currentBookData.isbn;
 
   try {
+    const response = await browser.runtime.sendMessage({
+      type: 'DOWNLOAD_EPUB',
+      data: { ...currentBookData, downloadOptions, confirmed }
+    });
+
+    if (response && response.needsConfirmation) {
+      showConfirmDialog(response.activeBook, downloadOptions);
+      return;
+    }
+
+    if (!response || !response.success) {
+      showError('Failed to start download: ' + (response && response.error || 'unknown error'));
+      return;
+    }
+
+    currentDownloadOurn = ourn;
+    confirmSection.classList.add('hidden');
     errorSection.classList.add('hidden');
     successSection.classList.add('hidden');
     warningSection.classList.add('hidden');
@@ -197,20 +277,29 @@ async function startDownload(downloadOptions = {}) {
 
     updateProgress(0, 100, 'Starting download...');
 
-    browser.runtime.sendMessage({
-      type: 'DOWNLOAD_EPUB',
-      data: { ...currentBookData, downloadOptions }
-    }).catch(err => {
-      console.error('Failed to send DOWNLOAD_EPUB message:', err);
-      showError('Failed to start download: ' + err.message);
-      currentDownloadOurn = null;
-    });
-
   } catch (error) {
     console.error('Download error:', error);
     showError('Download failed: ' + error.message);
     currentDownloadOurn = null;
   }
+}
+
+/**
+ * Show a prompt asking whether to download this book while another is
+ * already in progress.
+ */
+function showConfirmDialog(activeBook, downloadOptions) {
+  confirmMessage.textContent = `"${activeBook.title}" is currently downloading. Download this book at the same time?`;
+  confirmSection.classList.remove('hidden');
+  downloadSection.classList.add('hidden');
+  cacheSection.classList.add('hidden');
+
+  confirmYesBtn.onclick = () => startDownload(downloadOptions, true);
+  confirmNoBtn.onclick = () => {
+    confirmSection.classList.add('hidden');
+    downloadSection.classList.remove('hidden');
+    checkCacheStatus(currentBookData.ourn || currentBookData.isbn);
+  };
 }
 
 /**
@@ -279,22 +368,42 @@ clearHistoryBtn.addEventListener('click', async () => {
   }
 });
 
-// Listen for progress updates and download completion from background script
+// Listen for progress updates and download completion from background script.
+// These fire for every in-flight download, not just the one for the current
+// tab's book, so activeDownloadsMap is kept current for every book at once.
 browser.runtime.onMessage.addListener((message) => {
   if (message.type === 'DOWNLOAD_PROGRESS') {
-    updateProgress(message.current, message.total, message.message);
+    if (message.ourn === currentDownloadOurn) {
+      updateProgress(message.current, message.total, message.message);
+    }
+    activeDownloadsMap.set(message.ourn, {
+      ourn: message.ourn,
+      title: message.title,
+      current: message.current,
+      total: message.total,
+      message: message.message
+    });
+    renderActiveDownloads();
   }
 
-  if (message.type === 'DOWNLOAD_COMPLETE' && message.ourn === currentDownloadOurn) {
-    const data = message.data || {};
-    showSuccess(data.failedFiles, data.fromCache);
-    loadHistory();
-    currentDownloadOurn = null;
+  if (message.type === 'DOWNLOAD_COMPLETE') {
+    if (message.ourn === currentDownloadOurn) {
+      const data = message.data || {};
+      showSuccess(data.failedFiles, data.fromCache);
+      loadHistory();
+      currentDownloadOurn = null;
+    }
+    activeDownloadsMap.delete(message.ourn);
+    renderActiveDownloads();
   }
 
-  if (message.type === 'DOWNLOAD_FAILED' && message.ourn === currentDownloadOurn) {
-    showError(message.error || 'Download failed');
-    currentDownloadOurn = null;
+  if (message.type === 'DOWNLOAD_FAILED') {
+    if (message.ourn === currentDownloadOurn) {
+      showError(message.error || 'Download failed');
+      currentDownloadOurn = null;
+    }
+    activeDownloadsMap.delete(message.ourn);
+    renderActiveDownloads();
   }
 });
 
