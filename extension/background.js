@@ -37,7 +37,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true, queued: true, alreadyRunning: true });
       return true;
     }
-    activeDownloads.set(ourn, { status: 'running', current: 0, total: 100, message: 'Starting...' });
+
+    // If a different book is already downloading, require explicit confirmation
+    // before running a second one concurrently (each spins up its own pool of
+    // parallel requests, so unconfirmed piling-up hurts everyone's throughput).
+    if (!message.data.confirmed) {
+      const other = [...activeDownloads.entries()].find(([id, e]) => id !== ourn && e.status === 'running');
+      if (other) {
+        const [otherOurn, otherEntry] = other;
+        sendResponse({ success: true, needsConfirmation: true, activeBook: { ourn: otherOurn, title: otherEntry.title || otherOurn } });
+        return true;
+      }
+    }
+
+    activeDownloads.set(ourn, { status: 'running', current: 0, total: 100, message: 'Starting...', title: message.data.title || ourn });
     sendResponse({ success: true, queued: true });
     handleDownloadRequest(message.data, ourn).catch(() => {});
     return true;
@@ -46,6 +59,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_DOWNLOAD_STATUS') {
     const entry = activeDownloads.get(message.ourn) || null;
     sendResponse({ success: true, data: entry });
+    return true;
+  }
+
+  if (message.type === 'GET_ALL_DOWNLOADS') {
+    const running = [...activeDownloads.entries()]
+      .filter(([, e]) => e.status === 'running')
+      .map(([ourn, e]) => ({ ourn, title: e.title || ourn, current: e.current, total: e.total, message: e.message }));
+    sendResponse({ success: true, data: running });
     return true;
   }
 
