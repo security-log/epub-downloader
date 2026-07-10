@@ -41,15 +41,19 @@
 3. The popup will show:
    - Book title
    - ISBN
-   - Download button
+   - Download EPUB button
+   - Print / Save as PDF button
 
-4. Click "📥 Download EPUB"
+4. Choose your preferred format:
+   - **Download EPUB**: Downloads directly as EPUB file
+   - **Print / Save as PDF**: Opens the book in a new tab where you can use your browser's print function (File > Print or Cmd/Ctrl+P) and select "Save as PDF"
 
-6. EPUB will be saved to your Downloads folder
+5. Wait for completion — the progress bar shows real-time status for EPUB downloads
+
+6. File will be saved to your Downloads folder
 
 ## Current Known Issues
 
-- Icons are placeholders (need to run generate-icons.sh)
 - Some debug logging still active
 - No browser notification on completion
 

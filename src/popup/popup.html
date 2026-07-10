@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>O'Reilly EPUB Downloader</title>
-  <link rel="stylesheet" href="styles/popup.css">
+  <link rel="stylesheet" href="../styles/popup.css">
 </head>
 <body>
   <div class="container">
@@ -36,9 +36,14 @@
       </div>
 
       <div id="download-section" class="hidden">
-        <button id="download-btn" class="primary-btn">
-          📥 Download EPUB
-        </button>
+        <div class="download-buttons">
+          <button id="download-epub-btn" class="primary-btn">
+            📥 Download EPUB
+          </button>
+          <button id="print-btn" class="secondary-btn">
+            🖨️ Print / Save as PDF
+          </button>
+        </div>
       </div>
 
       <div id="progress-section" class="hidden">

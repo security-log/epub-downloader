@@ -1,0 +1,25 @@
+{
+  "name": "epub-downloader",
+  "version": "2.0.0",
+  "description": "**Browser Extension** for downloading books from O'Reilly Learning Platform as EPUB files.",
+  "main": "index.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@gh-ghafarpour:VaHiX/epub-downloader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "csso": "^5.0.5",
+    "terser": "^5.49.0"
+  }
+}

@@ -1,11 +1,13 @@
 /**
  * EPUB Download Module
  * Contains all the logic for downloading and building EPUB files from O'Reilly
+ * Also handles PDF conversion from cached EPUB content.
  */
 
 console.log('Download module loaded');
 
-const API_BASE = 'https://learning.oreilly.com';
+// Default API base — may be overridden per-book when user is on a proxy domain
+const DEFAULT_API_BASE = 'https://learning.oreilly.com';
 const CONCURRENCY = 10;
 const STAGGER_MS = 50;
 const RATE_LIMIT_DELAY = 100;
@@ -44,6 +46,9 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
 
   const ourn = bookData.ourn || bookData.isbn;
 
+  // Derive API base from the page URL so proxy users fetch through the proxy
+  const apiBase = apiBaseFromUrl(bookData.url || '');
+
   try {
     let metadata;
     if (options.useCache && !options.forceRefresh) {
@@ -55,7 +60,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     }
     if (!metadata) {
       sendProgress(0, 100, 'Fetching book metadata...');
-      metadata = await getBookMetadata(ourn, bookData.jwtToken);
+      metadata = await getBookMetadata(ourn, bookData.jwtToken, apiBase);
       if (!metadata) throw new Error('Could not fetch book metadata');
     }
 
@@ -107,7 +112,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     }
 
     sendProgress(10, 100, 'Getting file list...');
-    const files = await getAllFiles(metadata.files, bookData.jwtToken);
+    const files = await getAllFiles(metadata.files, bookData.jwtToken, apiBase);
     console.log(`Found ${files.length} files to download`);
 
     // Persist expected file list so rebuildOnly can diff against cache (BUG-04, D-04)
@@ -132,7 +137,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
     sendProgress(20, 100, downloadMsg);
 
     const { failedFiles } = await downloadAllFiles(
-      zip, filesToDownload, bookData.jwtToken, metadata, bookOurn, files.length, fromCache, sendProgress
+      zip, filesToDownload, bookData.jwtToken, metadata, bookOurn, files.length, fromCache, sendProgress, apiBase
     );
 
     const totalCached = fromCache + filesToDownload.length - failedFiles.length;
@@ -162,15 +167,34 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
 }
 
 /**
+ * Derive the API base URL from the book's page URL.
+ * If the user is browsing through a library proxy, API calls must
+ * go through the same proxy host.
+ */
+function apiBaseFromUrl(pageUrl) {
+  if (!pageUrl) return DEFAULT_API_BASE;
+  try {
+    const parsed = new URL(pageUrl);
+    // If the hostname isn't an oreilly.com domain, it's a proxy — use it
+    if (!parsed.hostname.endsWith('.oreilly.com')) {
+      return `${parsed.protocol}//${parsed.hostname}`;
+    }
+    return `${parsed.protocol}//${parsed.hostname}`;
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+}
+
+/**
  * Get book metadata from API
  */
-async function getBookMetadata(identifier, jwtToken) {
+async function getBookMetadata(identifier, jwtToken, apiBase = DEFAULT_API_BASE) {
   const headers = {
     'Accept': 'application/json',
     'Authorization': `Bearer ${jwtToken}`
   };
 
-  const firstUrl = `${API_BASE}/api/v2/epubs/${identifier}/`;
+  const firstUrl = `${apiBase}/api/v2/epubs/${identifier}/`;
   const firstResponse = await fetchWithRetry(firstUrl, { headers });
 
   if (firstResponse.ok) {
@@ -179,7 +203,7 @@ async function getBookMetadata(identifier, jwtToken) {
 
   if (identifier.includes(':book:')) {
     const articleUrn = identifier.replace(':book:', ':article:');
-    const secondUrl = `${API_BASE}/api/v2/epubs/${articleUrn}/`;
+    const secondUrl = `${apiBase}/api/v2/epubs/${articleUrn}/`;
     const secondResponse = await fetchWithRetry(secondUrl, { headers });
 
     if (secondResponse.ok) {
@@ -193,8 +217,11 @@ async function getBookMetadata(identifier, jwtToken) {
 
 /**
  * Get all files from the book (handles pagination)
+ * @param {string} filesUrl - URL to fetch files from (absolute)
+ * @param {string} jwtToken - JWT for auth
+ * @param {string} apiBase - Base API URL (e.g., https://learning.oreilly.com or proxy)
  */
-async function getAllFiles(filesUrl, jwtToken) {
+async function getAllFiles(filesUrl, jwtToken, apiBase = DEFAULT_API_BASE) {
   let allFiles = [];
   let nextUrl = filesUrl;
 
@@ -212,19 +239,23 @@ async function getAllFiles(filesUrl, jwtToken) {
 
     const data = await response.json();
     allFiles = allFiles.concat(data.results);
+
     const rawNext = data.next;
     if (rawNext != null) {
       if (typeof rawNext !== 'string') {
         throw new Error(`Unexpected pagination URL type: ${typeof rawNext}`);
       }
-      const nextHostname = new URL(rawNext).hostname;
-      if (!nextHostname.endsWith('.oreilly.com') && nextHostname !== 'learning.oreilly.com') {
-        throw new Error(`Pagination URL left oreilly.com domain: ${rawNext}`);
+      const nextUrlObj = new URL(rawNext);
+      const nextHostname = nextUrlObj.hostname;
+      const apiBaseHost = new URL(apiBase).hostname;
+      // Allow oreilly.com domains or the same proxy host as apiBase
+      if (!nextHostname.endsWith('.oreilly.com') && nextHostname !== apiBaseHost) {
+        throw new Error(`Pagination URL left expected domain: ${rawNext}`);
       }
     }
-    nextUrl = rawNext ?? null;
 
-    await sleep(RATE_LIMIT_DELAY);
+    nextUrl = rawNext ?? null;
+    if (nextUrl) await sleep(RATE_LIMIT_DELAY);
   }
 
   return allFiles;
@@ -233,7 +264,7 @@ async function getAllFiles(filesUrl, jwtToken) {
 /**
  * Download all files using concurrency pool with retry
  */
-async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalFileCount, fromCache, sendProgress) {
+async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalFileCount, fromCache, sendProgress, apiBase = DEFAULT_API_BASE) {
   const failedFiles = [];
   let completedFiles = fromCache;
 
@@ -262,8 +293,12 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
     let processedContent = content;
 
     const isHTML = file.media_type === 'application/xhtml+xml' || file.media_type === 'text/html';
+    console.log(`Processing ${fullPath}: media_type=${file.media_type}, isHTML=${isHTML}, contentType=${typeof content}`);
+
     if (isHTML && typeof content === 'string') {
       processedContent = cleanHTML(content, metadata.ourn || bookOurn, file.full_path);
+    } else if (isHTML && typeof content !== 'string') {
+      console.error('HTML file received non-string content:', typeof content, fullPath);
     }
 
     if (file.media_type === 'application/oebps-package+xml') {
@@ -363,14 +398,37 @@ async function buildEPUB(zip, ourn) {
 }
 
 /**
- * Clean HTML content and fix relative paths
+ * Clean HTML content and fix relative paths.
+ * Uses regex (not DOMParser) so it works in Chrome MV3 service workers.
  */
 function cleanHTML(content, ourn, filePath) {
-  // SEC-02: use DOMParser to remove script elements structurally
-  // BUG-02: do NOT remove <link> elements — stylesheets must survive
-  const doc = new DOMParser().parseFromString(content, 'text/html');
-  doc.querySelectorAll('script').forEach(el => el.remove());
-  content = doc.documentElement.outerHTML;
+  // Remove script tags — regex approach works in service workers
+  content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+  // Check if this is a full XHTML document or a content fragment
+  const isFullDoc = /<html\b/i.test(content);
+
+  if (!isFullDoc) {
+    // Content fragment — wrap in a proper XHTML document for Apple Books compatibility
+    // Extract XML namespaces from the root element
+    const rootNSMatch = content.match(/<[a-zA-Z][\w.-]*\s+((?:xmlns(?::\w+)?\s*=\s*"[^"]*"\s*)*)/);
+    content = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xmlns:m="http://www.w3.org/1998/Math/MathML">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body>
+${content}
+</body>
+</html>`;
+  } else {
+    // Full document — ensure epub namespace is declared
+    if (!/xmlns:epub/i.test(content)) {
+      content = content.replace(/<html\b/i, '<html xmlns:epub="http://www.idpf.org/2007/ops"');
+    }
+  }
 
   if (ourn) {
     const apiPath = `/api/v2/epubs/${ourn}/files/`;
@@ -400,25 +458,49 @@ function cleanHTML(content, ourn, filePath) {
 /**
  * Save file using browser downloads API
  */
+/**
+ * Save file using browser downloads API.
+ * Converts Blob to base64 data URI since Chrome MV3 service workers
+ * don't support URL.createObjectURL.
+ */
 async function saveFile(blob, filename) {
-  const url = URL.createObjectURL(blob);
   let downloadStarted = false;
+  let dataUrl = null;
 
   try {
+    dataUrl = await blobToDataUrl(blob);
     await browser.downloads.download({
-      url: url,
+      url: dataUrl,
       filename: filename,
       saveAs: true
     });
     downloadStarted = true;
-    // Browser download manager needs the URL alive briefly; revoke after 10 s
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
   } finally {
-    if (!downloadStarted) {
-      // Exception thrown before or during download — revoke immediately
-      URL.revokeObjectURL(url);
+    if (!downloadStarted && dataUrl) {
+      // No cleanup needed for data URLs — they're garbage-collected
     }
   }
+}
+
+/**
+ * Convert a Blob to a base64 data URI.
+ * Works in both service workers (Chrome MV3) and regular contexts (Firefox).
+ */
+async function blobToDataUrl(blob) {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const chars = [];
+  const len = bytes.length;
+  // Process in chunks to avoid stack overflow on large files
+  const CHUNK = 8192;
+  for (let offset = 0; offset < len; offset += CHUNK) {
+    const slice = bytes.subarray(offset, offset + CHUNK);
+    for (let i = 0; i < slice.length; i++) {
+      chars.push(String.fromCharCode(slice[i]));
+    }
+  }
+  const base64 = btoa(chars.join(''));
+  return `data:${blob.type};base64,${base64}`;
 }
 
 /**
@@ -479,4 +561,23 @@ function sanitizeZipPath(p) {
     .split('/')
     .filter(seg => seg !== '..' && seg !== '.' && seg !== '')
     .join('/');
+}
+
+/**
+ * Open printable book view — opens the extension print page for the given book.
+ * The print page reads directly from IndexedDB and triggers the print dialog.
+ */
+async function openPrintView(bookData) {
+  const ourn = bookData.ourn || bookData.isbn;
+  if (!ourn) throw new Error('Missing book identifier');
+
+  // Verify cache exists
+  const cachedMeta = await BookCache.getBookMeta(ourn);
+  if (!cachedMeta) {
+    throw new Error('Book not downloaded yet. Please download the EPUB first.');
+  }
+
+  // Open the extension print page — it reads from IndexedDB directly
+  const printPageUrl = browser.runtime.getURL('print.html') + '?ourn=' + encodeURIComponent(ourn);
+  await browser.tabs.create({ url: printPageUrl, active: true });
 }

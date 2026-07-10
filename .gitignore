@@ -1,20 +1,12 @@
 # Build artifacts
 dist/
-build/
 *.zip
 *.xpi
 
 # Extension packaging
 web-ext-artifacts/
 
-# User data - CONFIDENCIAL
-*.db
-*.db-shm
-*.db-wal
-cookies.json
-config.yaml
-
-# Descargas
+# Downloads
 Books/
 downloads/
 *.epub
@@ -27,14 +19,14 @@ logs/
 tmp/
 *.tmp
 
-# Generated icons (keep SVG source)
-extension/icons/icon-16.png
-extension/icons/icon-48.png
-extension/icons/icon-128.png
-
-# Node modules (if using build tools)
+# Node modules
 node_modules/
 package-lock.json
+
+# Generated icons (keep SVG source)
+public/icons/icon-16.png
+public/icons/icon-48.png
+public/icons/icon-128.png
 
 # IDE and editor files
 .vscode/
@@ -50,17 +42,7 @@ Thumbs.db
 # env file
 .env
 
-# Editor/IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-GETTING-STARTED.md
+# Project planning (Claude Code)
 .claude
 CLAUDE.md
 .planning/

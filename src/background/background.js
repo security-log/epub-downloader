@@ -49,6 +49,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'PRINT_BOOK') {
+    const ourn = message.data.ourn || message.data.isbn;
+    if (!ourn) {
+      sendResponse({ success: false, error: 'Missing book identifier (ourn or isbn)' });
+      return true;
+    }
+    sendResponse({ success: true });
+    // Fire and forget — no progress tracking needed for print
+    openPrintView(message.data).catch(err => {
+      console.error('Print view failed:', err);
+      browser.runtime.sendMessage({ type: 'PRINT_FAILED', ourn, error: err.message }).catch(() => {});
+    });
+    return true;
+  }
+
   if (message.type === 'GET_CACHED_BOOKS') {
     BookCache.listCachedBooks()
       .then(books => sendResponse({ success: true, data: books }))

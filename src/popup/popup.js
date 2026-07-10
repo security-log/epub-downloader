@@ -10,7 +10,8 @@ const bookInfo = document.getElementById('book-info');
 const bookTitle = document.getElementById('book-title');
 const bookIsbn = document.getElementById('book-isbn');
 const downloadSection = document.getElementById('download-section');
-const downloadBtn = document.getElementById('download-btn');
+const downloadEpubBtn = document.getElementById('download-epub-btn');
+const printBtn = document.getElementById('print-btn');
 const progressSection = document.getElementById('progress-section');
 const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
@@ -33,6 +34,21 @@ let currentBookData = null;
 let currentDownloadOurn = null;
 
 /**
+ * Check if a URL is an O'Reilly book page (landing page or chapter page).
+ */
+function isBookPageUrl(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    // Check for /library/view/ path — works for both landing pages and chapter pages
+    if (!parsed.pathname.includes('/library/view/')) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Initialize popup
  */
 async function init() {
@@ -40,13 +56,30 @@ async function init() {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     const currentTab = tabs[0];
 
-    if (!currentTab.url || !currentTab.url.includes('learning.oreilly.com/library/view/')) {
+    if (!currentTab.url || !isBookPageUrl(currentTab.url)) {
       showStatus('Please navigate to a book page on O\'Reilly Learning');
       loadHistory();
       return;
     }
 
-    const response = await browser.tabs.sendMessage(currentTab.id, { type: 'GET_BOOK_INFO' });
+    console.debug('URL matches book pattern, attempting to get book info...');
+
+    // Try to get book info with retries
+    let response = null;
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await browser.tabs.sendMessage(currentTab.id, { type: 'GET_BOOK_INFO' });
+        break; // Success
+      } catch (err) {
+        lastError = err;
+        console.warn(`Attempt ${attempt} failed:`, err.message);
+        if (attempt < 3) {
+          // Wait before retrying (100ms, 200ms, 300ms)
+          await new Promise(resolve => setTimeout(resolve, attempt * 100));
+        }
+      }
+    }
 
     if (response && response.success) {
       currentBookData = response.data;
@@ -63,7 +96,7 @@ async function init() {
             downloadSection.classList.add('hidden');
             cacheSection.classList.add('hidden');
             progressSection.classList.remove('hidden');
-            downloadBtn.disabled = true;
+            downloadEpubBtn.disabled = true;
             updateProgress(dlStatus.current, dlStatus.total, dlStatus.message);
           } else if (dlStatus.status === 'done') {
             const data = dlStatus.result || {};
@@ -78,11 +111,12 @@ async function init() {
         console.warn('Could not check download status:', err);
       }
     } else {
-      showStatus('Could not detect book information. Please refresh the page.');
+      const msg = response?.error || lastError?.message || 'Could not detect book information. Please refresh the page.';
+      console.debug('Failed to get book info after retries:', msg);
+      showStatus(msg);
     }
 
     loadHistory();
-
   } catch (error) {
     console.error('Error initializing popup:', error);
     showError('Failed to initialize extension: ' + error.message);
@@ -136,7 +170,7 @@ function showError(message) {
   errorMessage.textContent = message;
   errorSection.classList.remove('hidden');
   progressSection.classList.add('hidden');
-  downloadBtn.disabled = false;
+  downloadEpubBtn.disabled = false;
 }
 
 /**
@@ -146,7 +180,7 @@ function showSuccess(failedFiles, fromCache) {
   successSection.classList.remove('hidden');
   progressSection.classList.add('hidden');
   errorSection.classList.add('hidden');
-  downloadBtn.disabled = false;
+  downloadEpubBtn.disabled = false;
 
   if (failedFiles && failedFiles.length > 0) {
     warningMessage.textContent = `Download completed with ${failedFiles.length} failed file(s)`;
@@ -193,7 +227,7 @@ async function startDownload(downloadOptions = {}) {
     downloadSection.classList.add('hidden');
     cacheSection.classList.add('hidden');
     progressSection.classList.remove('hidden');
-    downloadBtn.disabled = true;
+    downloadEpubBtn.disabled = true;
 
     updateProgress(0, 100, 'Starting download...');
 
@@ -247,7 +281,7 @@ async function loadHistory() {
 
 // Event Listeners
 
-downloadBtn.addEventListener('click', () => {
+downloadEpubBtn.addEventListener('click', () => {
   startDownload({ useCache: true, forceRefresh: false });
 });
 
@@ -258,6 +292,46 @@ downloadCachedBtn.addEventListener('click', () => {
 forceDownloadBtn.addEventListener('click', () => {
   startDownload({ useCache: false, forceRefresh: true });
 });
+
+printBtn.addEventListener('click', () => {
+  openPrintView();
+});
+
+/**
+ * Open the book in a new tab for printing / save as PDF
+ * Builds a combined printable view from the cached EPUB content
+ */
+async function openPrintView() {
+  if (!currentBookData) {
+    showError('No book data available');
+    return;
+  }
+
+  try {
+    errorSection.classList.add('hidden');
+    successSection.classList.add('hidden');
+    warningSection.classList.add('hidden');
+    progressSection.classList.remove('hidden');
+    printBtn.disabled = true;
+
+    updateProgress(10, 100, 'Building printable view...');
+
+    browser.runtime.sendMessage({
+      type: 'PRINT_BOOK',
+      data: { ...currentBookData }
+    }).catch(err => {
+      console.error('Failed to send PRINT_BOOK message:', err);
+      showError('Failed to open print view: ' + err.message);
+      printBtn.disabled = false;
+    });
+
+    // The print view success/failure will come via messages
+  } catch (error) {
+    console.error('Print error:', error);
+    showError('Failed to open print view: ' + error.message);
+    printBtn.disabled = false;
+  }
+}
 
 clearCacheBtn.addEventListener('click', async () => {
   if (!currentBookData) return;
@@ -295,6 +369,12 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.type === 'DOWNLOAD_FAILED' && message.ourn === currentDownloadOurn) {
     showError(message.error || 'Download failed');
     currentDownloadOurn = null;
+  }
+
+  if (message.type === 'PRINT_FAILED' && message.ourn === currentDownloadOurn) {
+    showError(message.error || 'Failed to open print view');
+    currentDownloadOurn = null;
+    printBtn.disabled = false;
   }
 });
 

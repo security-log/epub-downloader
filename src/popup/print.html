@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Print View</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { font-size: 24pt; text-align: center; margin-bottom: 10px; }
+    h2 { font-size: 18pt; margin-top: 20px; }
+    h3 { font-size: 14pt; margin-top: 16px; }
+    p { margin: 8px 0; }
+    img { max-width: 100%; height: auto; }
+    pre, code { font-family: "SF Mono", "Cascadia Code", monospace; font-size: 10pt; background: #f5f5f5; }
+    pre { padding: 10px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    @media print {
+      body { padding: 0; max-width: none; }
+      .chapter { page-break-before: always; }
+      .chapter:first-of-type { page-break-before: avoid; }
+    }
+    #loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+      color: #666;
+    }
+    #loading::after {
+      content: "Loading book content...";
+    }
+  </style>
+</head>
+<body>
+  <div id="loading"></div>
+
+  <script src="print.js"></script>
+</body>
+</html>

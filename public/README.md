@@ -32,11 +32,17 @@ Download books from O'Reilly Learning Platform as EPUB files directly in your br
    cd epub-downloader
    ```
 
-2. Open Firefox and navigate to `about:debugging`
+2. Install dependencies and build:
+   ```bash
+   npm install
+   npm run build
+   ```
 
-3. Click "This Firefox" → "Load Temporary Add-on"
+3. Open Firefox and navigate to `about:debugging`
 
-4. Navigate to `extension/` folder and select `manifest.json`
+4. Click "This Firefox" → "Load Temporary Add-on"
+
+5. Navigate to `dist/` folder and select `manifest.json`
 
 ### Production (when published)
 
@@ -71,24 +77,48 @@ The popup also shows your **download history** with dates.
 ## Project Structure
 
 ```
-extension/
-├── manifest.json          # Extension manifest (Manifest V3)
-├── background.js          # Background service worker
-├── content.js             # Content script (runs on O'Reilly pages)
-├── popup.html             # Extension popup UI
-├── popup.js               # Popup logic
-├── download.js            # EPUB download logic
-├── cache.js               # IndexedDB cache layer
-├── pool.js                # Retry + concurrency pool utilities
+src/
+├── content/
+│   └── content.js          # Content script (runs on O'Reilly pages)
+├── background/
+│   ├── background.js       # Background service worker entry point
+│   ├── cache.js            # IndexedDB cache layer
+│   ├── pool.js             # Retry + concurrency pool utilities
+│   └── download.js         # EPUB download logic
+├── popup/
+│   ├── popup.html          # Extension popup UI
+│   └── popup.js            # Popup logic
 ├── styles/
-│   └── popup.css          # Popup styles
-├── lib/
-│   └── jszip.min.js       # ZIP compression library
+│   └── popup.css           # Popup styles
+└── lib/
+    └── jszip.min.js        # ZIP compression library
+
+public/
+├── manifest.json           # Extension manifest (Manifest V3)
 └── icons/
-    ├── icon-16.png        # Toolbar icon (16x16)
-    ├── icon-48.png        # Extension icon (48x48)
-    └── icon-128.png       # Store icon (128x128)
+    ├── icon.svg            # Source icon
+    ├── icon-16.png         # Toolbar icon (generated)
+    ├── icon-48.png         # Extension icon (generated)
+    └── icon-128.png        # Store icon (generated)
+
+dist/                        # Build output (loaded into Firefox)
+├── manifest.json
+├── background.js
+├── cache.js
+├── pool.js
+├── download.js
+├── content.js
+├── popup.html
+├── popup.js
+├── styles/
+│   └── popup.css
+├── lib/
+│   └── jszip.min.js
+└── icons/
+    └── *.png
 ```
+
+Build: `npm run build` runs `scripts/build.mjs` which copies source files to `dist/`.
 
 ## Authentication
 
