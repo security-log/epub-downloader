@@ -12,14 +12,15 @@ then creates an EPUB 3 file that works with Calibre and common e-readers.
 
 ## Why this exists
 
-An active subscription should not limit reading to a browser tab. This project is
-for readers who want to keep an authorized book available while travelling, use an
-e-ink device, organize a personal library in Calibre, or simply read without a
-network connection.
+Some titles are available for purchase through their publishers or retailers. This
+project is an experimental local EPUB workflow for material you are permitted to
+access and download; it does not grant rights to content or replace official purchase
+and distribution channels.
 
 It is deliberately local-first: there is no separate account, service, or server
-operated by this project. The extension works with the O'Reilly session already open
-in your browser.
+operated by this project. The extension uses the O'Reilly session already open in
+your browser and should only be used in accordance with the applicable terms and
+rights for the material.
 
 ## What it does
 
