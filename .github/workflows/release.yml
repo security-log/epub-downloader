@@ -150,6 +150,32 @@ jobs:
           target_commitish: main
           name: O'Reilly EPUB Downloader ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
+          body: |
+            ## Release information
+
+            This release contains the Firefox and Chrome builds of O'Reilly EPUB Downloader.
+
+            ## Included files
+
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip`
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip`
+            - `checksums.txt` — SHA-256 hashes for both packages
+
+            ## Installation
+
+            1. Download the package for your browser and extract it.
+            2. In Firefox, open `about:debugging` and use **Load Temporary Add-on**.
+            3. In Chrome, open `chrome://extensions`, enable Developer mode, and use **Load unpacked**.
+
+            ## Integrity verification
+
+            ```bash
+            sha256sum -c checksums.txt --ignore-missing
+            ```
+
+            ## Changes
+
+            The generated changelog below lists the pull requests included in this release.
           files: |
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip

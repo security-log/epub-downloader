@@ -3,16 +3,25 @@ changelog:
     - title: Breaking changes
       labels:
         - release:major
-    - title: New features
+    - title: Features
       labels:
         - release:minor
         - enhancement
         - feature
-    - title: Fixes
+    - title: Bug fixes
       labels:
         - release:patch
         - bug
         - fix
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Maintenance
+      labels:
+        - chore
+        - ci
+        - dependencies
     - title: Other changes
       labels:
         - "*"

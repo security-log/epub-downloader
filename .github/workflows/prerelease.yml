@@ -148,12 +148,36 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ github.event.pull_request.head.sha }}
-          name: RC for PR #${{ github.event.pull_request.number }}
+          name: Release candidate for PR #${{ github.event.pull_request.number }}
           body: |
-            Candidate build for #${{ github.event.pull_request.number }}.
+            ## Purpose
 
-            This prerelease is replaced whenever the PR changes. The final release
-            after merge will contain the generated changelog.
+            This is a test build for pull request #${{ github.event.pull_request.number }}.
+
+            ## Candidate version
+
+            `${{ needs.prepare.outputs.version }}`
+
+            ## Included files
+
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip`
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip`
+            - `checksums.txt` — SHA-256 hashes for both packages
+
+            ## Installation and verification
+
+            Install the extracted package through `about:debugging` (Firefox) or
+            `chrome://extensions` with Developer mode enabled (Chrome). Verify it with:
+
+            ```bash
+            sha256sum -c checksums.txt --ignore-missing
+            ```
+
+            ## Status
+
+            This prerelease is replaced whenever the `develop` → `main` PR changes.
+            It is for testing only; the final release is published after merge and
+            includes the generated changelog.
           files: |
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip
