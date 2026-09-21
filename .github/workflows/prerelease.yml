@@ -1,25 +1,25 @@
-name: Release merged pull request
+name: Create pull request release candidate
 
 on:
   pull_request:
     branches: [main]
-    types: [closed]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
 
-# A release is created only for a PR that GitHub reports as merged. Direct pushes
-# to main deliberately do not create releases.
+# RCs are only created for the develop -> main PR in this repository. This
+# prevents executing code from forks with a token that can create tags/releases.
 permissions:
   contents: write
   pull-requests: read
 
-# Do not calculate two versions from the same latest tag if PRs are merged close
-# together. Queued runs are allowed to finish in order.
 concurrency:
-  group: release-main
-  cancel-in-progress: false
+  group: prerelease-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   prepare:
-    if: github.event.pull_request.merged == true
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'develop'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -27,21 +27,22 @@ jobs:
       previous_tag: ${{ steps.version.outputs.previous_tag }}
 
     steps:
-      - name: Check out main and its tags
+      - name: Check out pull request
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Calculate release version
+      - name: Calculate candidate version
         id: version
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
-
-          mapfile -t tags < <(git tag --merged HEAD -l 'v*' --sort=-v:refname)
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          mapfile -t tags < <(git tag --merged origin/main -l 'v*' --sort=-v:refname)
           latest_tag=""
           for candidate in "${tags[@]}"; do
             if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -49,51 +50,41 @@ jobs:
               break
             fi
           done
-          if [[ -z "$latest_tag" || ! "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          if [[ -z "$latest_tag" ]]; then
             echo "No valid vX.Y.Z tag reachable from main." >&2
             exit 1
           fi
 
-          major="${BASH_REMATCH[1]}"
-          minor="${BASH_REMATCH[2]}"
-          patch="${BASH_REMATCH[3]}"
-          bump="patch"
+          if [[ "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          fi
 
-          # The highest-impact label wins if more than one is present.
           if jq -e --arg label 'release:major' 'index($label) != null' <<<"$LABELS" > /dev/null; then
-            bump="major"
             major=$((major + 1)); minor=0; patch=0
           elif jq -e --arg label 'release:minor' 'index($label) != null' <<<"$LABELS" > /dev/null; then
-            bump="minor"
             minor=$((minor + 1)); patch=0
           else
-            # release:patch and PRs without a release label both create a patch release.
             patch=$((patch + 1))
           fi
 
           version="$major.$minor.$patch"
-          tag="v$version"
-          echo "Releasing $tag ($bump bump from $latest_tag)"
+          tag="v$version-rc.pr-$PR_NUMBER"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "previous_tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
-      - name: Update extension version and create tag
+      - name: Create or update candidate tag
         env:
-          VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          jq --arg version "$VERSION" '.version = $version' extension/manifest.json > manifest.json.tmp
-          mv manifest.json.tmp extension/manifest.json
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extension/manifest.json
-          git commit -m "chore(release): $TAG"
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin HEAD:main --follow-tags
+          git tag -fa "$TAG" -m "Release candidate $TAG"
+          git push --force origin "refs/tags/$TAG"
 
   package:
     needs: prepare
@@ -103,10 +94,21 @@ jobs:
         target: [firefox, chrome]
 
     steps:
-      - name: Check out release tag
+      - name: Check out candidate tag
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.tag }}
+
+      # Browser manifest versions must be numeric, so the RC suffix is used in
+      # the Git tag and package names only.
+      - name: Set candidate manifest version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq --arg version "$VERSION" '.version = $version' extension/manifest.json > manifest.json.tmp
+          mv manifest.json.tmp extension/manifest.json
 
       - name: Package extension
         id: package
@@ -140,26 +142,22 @@ jobs:
         run: |
           set -euo pipefail
           cat *.sha256 > checksums.txt
-          cat checksums.txt
 
-      - name: Create GitHub release and changelog
+      - name: Create or update release candidate
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          previous_tag: ${{ needs.prepare.outputs.previous_tag }}
-          target_commitish: main
-          name: O'Reilly EPUB Downloader ${{ needs.prepare.outputs.tag }}
-          generate_release_notes: true
+          target_commitish: ${{ github.event.pull_request.head.sha }}
+          name: RC for PR #${{ github.event.pull_request.number }}
+          body: |
+            Candidate build for #${{ github.event.pull_request.number }}.
+
+            This prerelease is replaced whenever the PR changes. The final release
+            after merge will contain the generated changelog.
           files: |
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip
             oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip
             checksums.txt
           fail_on_unmatched_files: true
           draft: false
-          prerelease: false
-
-      - name: Summary
-        run: |
-          echo "### Release created" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Version:** ${{ needs.prepare.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Packages:** Firefox and Chrome" >> "$GITHUB_STEP_SUMMARY"
+          prerelease: true

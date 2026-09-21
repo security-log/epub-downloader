@@ -63,6 +63,22 @@ Contributions are welcome! Especially with the front, as it's not my strength (t
 2. Create a feature branch
 3. Open a Pull Request
 
+### Releases
+
+Every PR merged into `main` creates a GitHub release with automatically generated
+release notes and Firefox/Chrome packages. Use one of these optional PR labels to
+choose the semantic-version increment; if none is applied, the release is a patch.
+
+- `release:major` — incompatible change (`X.0.0`)
+- `release:minor` — new backwards-compatible functionality (`x.Y.0`)
+- `release:patch` — backwards-compatible fix (`x.y.Z`)
+
+Apply `skip-changelog` to omit a PR from the generated release notes.
+
+The `develop` → `main` PR also receives an updated RC prerelease
+(`vX.Y.Z-rc.pr-N`) with test packages. The RC tag is moved to the newest PR commit;
+it is never treated as a stable release.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
