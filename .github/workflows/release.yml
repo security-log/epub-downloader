@@ -26,6 +26,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       previous_tag: ${{ steps.version.outputs.previous_tag }}
       category: ${{ steps.version.outputs.category }}
+      update_changelog: ${{ steps.version.outputs.update_changelog }}
 
     steps:
       - name: Check out main and its tags
@@ -60,6 +61,7 @@ jobs:
           patch="${BASH_REMATCH[3]}"
           bump="patch"
           category="Changed"
+          update_changelog=true
 
           # The highest-impact label wins if more than one is present.
           if jq -e --arg label 'release:major' 'index($label) != null' <<<"$LABELS" > /dev/null; then
@@ -85,12 +87,17 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "previous_tag=$latest_tag" >> "$GITHUB_OUTPUT"
           echo "category=$category" >> "$GITHUB_OUTPUT"
+          if jq -e --arg label 'skip-changelog' 'index($label) != null' <<<"$LABELS" > /dev/null; then
+            update_changelog=false
+          fi
+          echo "update_changelog=$update_changelog" >> "$GITHUB_OUTPUT"
 
       - name: Update extension version and create tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
           CATEGORY: ${{ steps.version.outputs.category }}
+          UPDATE_CHANGELOG: ${{ steps.version.outputs.update_changelog }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         shell: bash
@@ -99,32 +106,37 @@ jobs:
           jq --arg version "$VERSION" '.version = $version' extension/manifest.json > manifest.json.tmp
           mv manifest.json.tmp extension/manifest.json
 
-          release_date="$(date -u +%F)"
-          pr_title="$(printf '%s' "$PR_TITLE" | tr '\r\n' ' ')"
-          entry_file="$(mktemp)"
-          printf '## [%s] - %s\n\n### %s\n- [%s](%s)\n\n' \
-            "$VERSION" "$release_date" "$CATEGORY" "$pr_title" "$PR_URL" > "$entry_file"
-          awk -v entry_file="$entry_file" '
-            /^## \[Unreleased\]/ { in_unreleased = 1; print; next }
-            in_unreleased && !inserted && /^## \[/ {
-              while ((getline line < entry_file) > 0) print line
-              close(entry_file)
-              inserted = 1
-            }
-            { print }
-            END {
-              if (!inserted) {
+          if [[ "$UPDATE_CHANGELOG" == true ]]; then
+            release_date="$(date -u +%F)"
+            pr_title="$(printf '%s' "$PR_TITLE" | tr '\r\n' ' ')"
+            entry_file="$(mktemp)"
+            printf '## [%s] - %s\n\n### %s\n- [%s](%s)\n\n' \
+              "$VERSION" "$release_date" "$CATEGORY" "$pr_title" "$PR_URL" > "$entry_file"
+            awk -v entry_file="$entry_file" '
+              /^## \[Unreleased\]/ { in_unreleased = 1; print; next }
+              in_unreleased && !inserted && /^## \[/ {
                 while ((getline line < entry_file) > 0) print line
                 close(entry_file)
+                inserted = 1
               }
-            }
-          ' CHANGELOG.md > changelog.tmp
-          mv changelog.tmp CHANGELOG.md
-          rm -f "$entry_file"
+              { print }
+              END {
+                if (!inserted) {
+                  while ((getline line < entry_file) > 0) print line
+                  close(entry_file)
+                }
+              }
+            ' CHANGELOG.md > changelog.tmp
+            mv changelog.tmp CHANGELOG.md
+            rm -f "$entry_file"
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md extension/manifest.json
+          git add extension/manifest.json
+          if [[ "$UPDATE_CHANGELOG" == true ]]; then
+            git add CHANGELOG.md
+          fi
           git commit -m "chore(release): $TAG"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin HEAD:main --follow-tags
