@@ -84,6 +84,7 @@ extension/
 │   └── popup.css          # Popup styles
 ├── lib/
 │   └── jszip.min.js       # ZIP compression library
+├── fonts/                 # Space Grotesk + JetBrains Mono (woff2, SIL OFL)
 └── icons/
     ├── icon-48.png        # Toolbar/extension icon (48x48)
     └── icon-96.png        # High-DPI icon (96x96)
