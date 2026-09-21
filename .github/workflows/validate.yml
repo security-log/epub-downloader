@@ -9,29 +9,42 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    
+
+    strategy:
+      matrix:
+        target: [ firefox, chrome ]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Check manifest.json syntax
         run: |
           echo "Validating manifest.json..."
-          cat extension/manifest.json | jq empty
+          jq empty extension/manifest.json
           echo "✅ manifest.json is valid JSON"
-      
+
       - name: Check required files exist
         run: |
           echo "Checking required files..."
           FILES=(
             "extension/manifest.json"
+            "extension/compat.js"
             "extension/background.js"
             "extension/content.js"
             "extension/download.js"
+            "extension/platform.js"
             "extension/popup.html"
             "extension/popup.js"
             "extension/lib/jszip.min.js"
           )
+          if [ "${{ matrix.target }}" = "chrome" ]; then
+            FILES+=(
+              "extension/sw.js"
+              "extension/offscreen.html"
+              "extension/offscreen.js"
+            )
+          fi
           for file in "${FILES[@]}"; do
             if [ ! -f "$file" ]; then
               echo "❌ Missing required file: $file"
@@ -40,7 +53,7 @@ jobs:
               echo "✅ $file exists"
             fi
           done
-      
+
       - name: Check manifest version
         run: |
           VERSION=$(jq -r '.version' extension/manifest.json)
@@ -50,33 +63,45 @@ jobs:
             exit 1
           fi
           echo "✅ Version format is valid"
-      
-      - name: Test build package
+
+      - name: Package extension
+        id: package
+        uses: ./.github/actions/package-extension
+        with:
+          target: ${{ matrix.target }}
+          version: ci
+
+      - name: Check packaged manifest
         run: |
-          echo "Testing package creation..."
-          cd extension
-          zip -r ../test-package.zip . \
-            -x "*.git*" \
-            -x "test-*.html" \
-            -x "README.md" \
-            -x ".DS_Store"
-          cd ..
-          
-          SIZE=$(stat -f%z test-package.zip 2>/dev/null || stat -c%s test-package.zip)
+          MANIFEST=build/manifest.json
+          if [ "${{ matrix.target }}" = "chrome" ]; then
+            jq -e '.background.service_worker == "sw.js"
+                   and (.background.scripts == null)
+                   and (.browser_specific_settings == null)
+                   and (.permissions | index("offscreen"))' "$MANIFEST" > /dev/null
+          else
+            jq -e '(.background.scripts | length > 0)
+                   and (.background.service_worker == null)
+                   and (.permissions | index("offscreen") | not)' "$MANIFEST" > /dev/null
+          fi
+          echo "✅ ${{ matrix.target }} manifest is well-formed"
+
+      - name: Check package
+        run: |
+          PACKAGE="${{ steps.package.outputs.package }}"
+          SIZE=$(stat -c%s "$PACKAGE")
           echo "Package size: $SIZE bytes"
-          
-          if [ $SIZE -lt 10000 ]; then
+
+          if [ "$SIZE" -lt 10000 ]; then
             echo "❌ Package seems too small"
             exit 1
           fi
-          
+
           echo "✅ Package created successfully"
-          
-          # List contents
-          unzip -l test-package.zip | head -20
-      
+          unzip -l "$PACKAGE"
+
       - name: Summary
         run: |
-          echo "### ✅ Extension Validation Passed!" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Extension Validation Passed (${{ matrix.target }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "All checks completed successfully." >> $GITHUB_STEP_SUMMARY
