@@ -1,0 +1,30 @@
+changelog:
+  categories:
+    - title: Breaking changes
+      labels:
+        - release:major
+    - title: Features
+      labels:
+        - release:minor
+        - enhancement
+        - feature
+    - title: Bug fixes
+      labels:
+        - release:patch
+        - bug
+        - fix
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Maintenance
+      labels:
+        - chore
+        - ci
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"
+  exclude:
+    labels:
+      - skip-changelog

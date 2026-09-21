@@ -1,91 +1,137 @@
 # O'Reilly EPUB Downloader
 
-**Firefox Extension** for downloading books from O'Reilly Learning Platform as EPUB files.
-<img width="2522" height="1496" alt="image" src="https://github.com/user-attachments/assets/0860d54e-60ac-4510-a5c3-de114c0b85f1" />
+Read the books you already have access to, on the devices and in the apps where
+you prefer to read them.
 
+O'Reilly EPUB Downloader is a browser extension that turns an O'Reilly Learning
+book page into a local EPUB file for personal, offline reading. It uses your active
+O'Reilly session to collect the book's content, images, styles, fonts, and metadata,
+then creates an EPUB 3 file that works with Calibre and common e-readers.
 
+<img width="2522" height="1496" alt="O'Reilly EPUB Downloader popup" src="https://github.com/user-attachments/assets/0860d54e-60ac-4510-a5c3-de114c0b85f1" />
 
-## Quick Start
+## Why this exists
 
-1. **Install the extension** (see [Installation](#installation))
-2. **Log in** to [learning.oreilly.com](https://learning.oreilly.com)
-3. **Open any book** you want to download
-4. **Click the extension icon** in the toolbar
-5. **Click "Download EPUB"** and wait for completion
+Some titles are available for purchase through their publishers or retailers. This
+project is an experimental local EPUB workflow for material you are permitted to
+access and download; it does not grant rights to content or replace official purchase
+and distribution channels.
 
-## Requirements
+It is deliberately local-first: there is no separate account, service, or server
+operated by this project. The extension uses the O'Reilly session already open in
+your browser and should only be used in accordance with the applicable terms and
+rights for the material.
 
-- **Firefox** browser
-- **O'Reilly Learning** subscription (active and logged in)
+## What it does
 
-## Installation
+- Extracts the current book from an O'Reilly Learning page.
+- Uses the active browser session to request authorized content.
+- Downloads chapters, images, stylesheets, fonts, and book metadata.
+- Builds a standards-compliant EPUB 3 archive with the original reading order.
+- Shows progress, keeps a local download history, and warns before concurrent
+  downloads.
+- Caches downloaded files in the browser so a book can be rebuilt without fetching
+  everything again.
 
-### Download from Releases
+```text
+O'Reilly book page → browser extension → authorized O'Reilly content → local EPUB
+```
 
-1. Go to [Releases](https://github.com/security-log/epub-downloader/releases)
-2. Download the latest `oreilly-epub-downloader-vX.X.X.zip`
-3. Extract the ZIP file
-4. Load in Firefox:
-   - Open `about:debugging`
-   - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `manifest.json` from extracted folder
+## Availability
 
-## Usage Guide
+| Browser | Status | Minimum version |
+| --- | --- | --- |
+| Firefox | Supported | 115 |
 
-### Basic Download
+The extension is currently packaged as an unsigned Firefox add-on. It must be loaded
+temporarily during development; a browser restart requires loading it again.
 
-1. Navigate to any book on O'Reilly:
-   ```
-   https://learning.oreilly.com/library/view/{book-title}/{isbn}/
-   ```
+## Get started
 
-2. Click the extension icon in the toolbar
+1. Open the [latest release](https://github.com/security-log/epub-downloader/releases/latest).
+2. Follow the installation and integrity-verification instructions in that release.
+3. Sign in to [O'Reilly Learning](https://learning.oreilly.com).
+4. Open a book page and select the extension in the browser toolbar.
+5. Choose **Download EPUB**. The finished file is saved through your browser's
+   normal downloads flow.
 
-3. The popup will show:
-   - Book title
-   - ISBN
-   - Download button
+Release pages are the source of truth for installation because they name the exact
+package, checksum, and browser-specific steps for that version.
 
-4. Click "Download EPUB"
+## Permissions and privacy
 
-6. EPUB will be saved to your Downloads folder
+The extension requests only the permissions needed for its job:
 
-## Current Known Issues
+| Permission | Why it is needed |
+| --- | --- |
+| `downloads` | Saves the generated EPUB to your device. |
+| `storage` | Keeps download state, history, and the local content cache. |
+| O'Reilly host access | Reads the active book page and requests content permitted by your signed-in O'Reilly session. |
 
-- Some debug logging still active
-- No browser notification on completion
+Your O'Reilly session is used only to communicate with O'Reilly. This project does
+not provide a remote backend or require a separate account.
+
+## Development
+
+To run the extension from source in Firefox:
+
+1. Clone this repository.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Select **Load Temporary Add-on**.
+4. Choose `extension/manifest.json`.
+
+The code is organized around a small set of browser components:
+
+- `content.js` identifies the current book and obtains the active session context.
+- `background.js` coordinates downloads and maintains their state.
+- `download.js` retrieves files and builds the EPUB archive.
+- `cache.js` stores downloaded content in IndexedDB for reuse.
+- `popup.js` provides progress, history, and download controls.
+
+## Limitations
+
+- An active O'Reilly Learning subscription and signed-in browser session are required.
+- O'Reilly changes can require updates to the extension.
+- Some failures may leave individual book files unavailable; the popup reports them
+  with the completed download.
+- The Firefox installation is temporary until the add-on is signed and distributed.
+
+## Releases
+
+Every PR merged into `main` creates a GitHub release with generated changelog notes.
+Use one of these optional labels to select the semantic-version increment; without a
+label, the release is a patch release.
+
+- `release:major` — incompatible change (`X.0.0`)
+- `release:minor` — backwards-compatible functionality (`x.Y.0`)
+- `release:patch` — backwards-compatible fix (`x.y.Z`)
+
+The `develop` → `main` PR receives a replaceable release candidate for testing.
+Apply `skip-changelog` to omit a PR from the generated release notes.
 
 ## Contributing
 
-Contributions are welcome! Especially with the front, as it's not my strength (the current version is AI-generated)
+Contributions are welcome. Please open an issue or pull request with a clear
+description of the reader problem you are solving, how to reproduce it, and how you
+verified the change. The validation workflow runs for pull requests to `develop` and
+`main`.
 
-1. Fork the repository
-2. Create a feature branch
-3. Open a Pull Request
+## Responsible use
+
+This tool is intended for personal, offline access to content you are authorized to
+read. Do not redistribute downloaded material or use it in ways that violate
+O'Reilly's terms or the rights of authors and publishers.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+[MIT](LICENSE)
 
-## ️Disclaimer
-
-This tool is for **personal use only**. 
-
-- Download books you have legitimate access to
-- Use downloads for personal reading and study
-- Do not redistribute downloaded content
-- Do not violate O'Reilly's Terms of Service
-- Do not use for commercial purposes
-
-**Use responsibly and respect content creators.**
-
-**⭐ Star this repo** if you find it useful!
-## Star History
+## Project history
 
 <a href="https://www.star-history.com/?repos=security-log%2Fepub-downloader&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&theme=dark&legend=top-left" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&legend=top-left" />
+   <img alt="Star history chart" src="https://api.star-history.com/chart?repos=security-log/epub-downloader&type=date&legend=top-left" />
  </picture>
 </a>

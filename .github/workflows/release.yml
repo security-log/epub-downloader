@@ -1,90 +1,237 @@
-name: Release Extension
+name: Release merged pull request
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+  pull_request:
+    branches: [main]
+    types: [closed]
 
+# A release is created only for a PR that GitHub reports as merged. Direct pushes
+# to main deliberately do not create releases.
 permissions:
   contents: write
+  pull-requests: read
+
+# Do not calculate two versions from the same latest tag if PRs are merged close
+# together. Queued runs are allowed to finish in order.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  prepare:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      category: ${{ steps.version.outputs.category }}
+      update_changelog: ${{ steps.version.outputs.update_changelog }}
+
     steps:
-      - name: Checkout code
+      - name: Check out main and its tags
         uses: actions/checkout@v4
-      
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
-      - name: Build extension package
-        run: |
-          cd extension
-          zip -r ../oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip . \
-            -x "*.git*" \
-            -x "test-*.html" \
-            -x "README.md" \
-            -x ".DS_Store"
-          cd ..
-      
-      - name: Generate checksum
-        run: |
-          sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip > checksums.txt
-          cat checksums.txt
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
         with:
-          files: |
-            oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
-            checksums.txt
+          ref: main
+          fetch-depth: 0
+
+      - name: Calculate release version
+        id: version
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t tags < <(git tag --merged HEAD -l 'v*' --sort=-v:refname)
+          latest_tag=""
+          for candidate in "${tags[@]}"; do
+            if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              latest_tag="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$latest_tag" || ! "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "No valid vX.Y.Z tag reachable from main." >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          bump="patch"
+          category="Changed"
+          update_changelog=true
+
+          # The highest-impact label wins if more than one is present.
+          if jq -e --arg label 'release:major' 'index($label) != null' <<<"$LABELS" > /dev/null; then
+            bump="major"
+            category="Breaking changes"
+            major=$((major + 1)); minor=0; patch=0
+          elif jq -e --arg label 'release:minor' 'index($label) != null' <<<"$LABELS" > /dev/null; then
+            bump="minor"
+            category="Added"
+            minor=$((minor + 1)); patch=0
+          elif jq -e --arg label 'release:patch' 'index($label) != null' <<<"$LABELS" > /dev/null; then
+            category="Fixed"
+            patch=$((patch + 1))
+          else
+            # PRs without a release label create a patch release under Changed.
+            patch=$((patch + 1))
+          fi
+
+          version="$major.$minor.$patch"
+          tag="v$version"
+          echo "Releasing $tag ($bump bump from $latest_tag)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          echo "category=$category" >> "$GITHUB_OUTPUT"
+          if jq -e --arg label 'skip-changelog' 'index($label) != null' <<<"$LABELS" > /dev/null; then
+            update_changelog=false
+          fi
+          echo "update_changelog=$update_changelog" >> "$GITHUB_OUTPUT"
+
+      - name: Update extension version and create tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          CATEGORY: ${{ steps.version.outputs.category }}
+          UPDATE_CHANGELOG: ${{ steps.version.outputs.update_changelog }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq --arg version "$VERSION" '.version = $version' extension/manifest.json > manifest.json.tmp
+          mv manifest.json.tmp extension/manifest.json
+
+          if [[ "$UPDATE_CHANGELOG" == true ]]; then
+            release_date="$(date -u +%F)"
+            pr_title="$(printf '%s' "$PR_TITLE" | tr '\r\n' ' ')"
+            entry_file="$(mktemp)"
+            printf '## [%s] - %s\n\n### %s\n- [%s](%s)\n\n' \
+              "$VERSION" "$release_date" "$CATEGORY" "$pr_title" "$PR_URL" > "$entry_file"
+            awk -v entry_file="$entry_file" '
+              /^## \[Unreleased\]/ { in_unreleased = 1; print; next }
+              in_unreleased && !inserted && /^## \[/ {
+                while ((getline line < entry_file) > 0) print line
+                close(entry_file)
+                inserted = 1
+              }
+              { print }
+              END {
+                if (!inserted) {
+                  while ((getline line < entry_file) > 0) print line
+                  close(entry_file)
+                }
+              }
+            ' CHANGELOG.md > changelog.tmp
+            mv changelog.tmp CHANGELOG.md
+            rm -f "$entry_file"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extension/manifest.json
+          if [[ "$UPDATE_CHANGELOG" == true ]]; then
+            git add CHANGELOG.md
+          fi
+          git commit -m "chore(release): $TAG"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin HEAD:main --follow-tags
+
+  package:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [firefox, chrome]
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Package extension
+        id: package
+        uses: ./.github/actions/package-extension
+        with:
+          target: ${{ matrix.target }}
+          version: ${{ needs.prepare.outputs.tag }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            ${{ steps.package.outputs.package }}
+            ${{ steps.package.outputs.package }}.sha256
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat *.sha256 > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub release and changelog
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          previous_tag: ${{ needs.prepare.outputs.previous_tag }}
+          target_commitish: main
+          name: O'Reilly EPUB Downloader ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true
           body: |
-            # O'Reilly EPUB Downloader ${{ steps.get_version.outputs.VERSION }}
-            
-            ## 📦 Installation
-            
-            1. Download `oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip`
-            2. Extract the ZIP file
-            3. Open Firefox and go to `about:debugging`
-            4. Click "This Firefox" → "Load Temporary Add-on"
-            5. Select `manifest.json` from the extracted folder
-            
-            ## ✨ Features
-            
-            - ✅ One-click EPUB downloads from O'Reilly Learning Platform
-            - ✅ Complete book content with images and formatting
-            - ✅ Automatic authentication using browser session
-            - ✅ Valid EPUB files compatible with Calibre and other readers
-            - ✅ Progress tracking during download
-            
-            ## 🔐 Verification
-            
-            Verify the download integrity:
+            ## Release information
+
+            This release contains the Firefox and Chrome builds of O'Reilly EPUB Downloader.
+
+            ## Included files
+
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip`
+            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip`
+            - `checksums.txt` — SHA-256 hashes for both packages
+
+            ## Installation
+
+            1. Download the package for your browser and extract it.
+            2. In Firefox, open `about:debugging` and use **Load Temporary Add-on**.
+            3. In Chrome, open `chrome://extensions`, enable Developer mode, and use **Load unpacked**.
+
+            ## Integrity verification
+
             ```bash
-            sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
-            # Compare with checksums.txt
+            sha256sum -c checksums.txt --ignore-missing
             ```
-            
-            ## 📚 Documentation
-            
-            See [README.md](https://github.com/${{ github.repository }}/blob/${{ steps.get_version.outputs.VERSION }}/README.md) for complete documentation.
-            
-            ## ⚠️ Note
-            
-            This is a temporary installation method. For permanent installation, the extension needs to be signed or published to Firefox Add-ons store.
+
+            ## Changes
+
+            The generated changelog below lists the pull requests included in this release.
+          files: |
+            oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip
+            oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip
+            checksums.txt
+          fail_on_unmatched_files: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Summary
         run: |
-          echo "### ✅ Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Users can now download and install the extension!" >> $GITHUB_STEP_SUMMARY
+          echo "### Release created" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** ${{ needs.prepare.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Packages:** Firefox and Chrome" >> "$GITHUB_STEP_SUMMARY"
