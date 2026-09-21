@@ -51,7 +51,6 @@
 
 ## Current Known Issues
 
-- Icons are placeholders (need to run generate-icons.sh)
 - Some debug logging still active
 - No browser notification on completion
 

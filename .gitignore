@@ -27,11 +27,6 @@ logs/
 tmp/
 *.tmp
 
-# Generated icons (keep SVG source)
-extension/icons/icon-16.png
-extension/icons/icon-48.png
-extension/icons/icon-128.png
-
 # Node modules (if using build tools)
 node_modules/
 package-lock.json
