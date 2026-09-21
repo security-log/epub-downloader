@@ -14,12 +14,13 @@ const downloadBtn = document.getElementById('download-btn');
 const progressSection = document.getElementById('progress-section');
 const progressBar = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
+const progressPct = document.getElementById('progress-pct');
 const errorSection = document.getElementById('error-section');
 const errorMessage = document.getElementById('error-message');
 const successSection = document.getElementById('success-section');
 const cacheSection = document.getElementById('cache-section');
 const cacheStatusText = document.getElementById('cache-status-text');
-const downloadCachedBtn = document.getElementById('download-cached-btn');
+const cacheMeta = document.getElementById('cache-meta');
 const forceDownloadBtn = document.getElementById('force-download-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
 const warningSection = document.getElementById('warning-section');
@@ -34,6 +35,7 @@ const confirmYesBtn = document.getElementById('confirm-yes-btn');
 const confirmNoBtn = document.getElementById('confirm-no-btn');
 const activeDownloadsSection = document.getElementById('active-downloads-section');
 const activeDownloadsList = document.getElementById('active-downloads-list');
+const appVersion = document.getElementById('app-version');
 
 let currentBookData = null;
 let currentDownloadOurn = null;
@@ -46,6 +48,8 @@ const activeDownloadsMap = new Map();
  * Initialize popup
  */
 async function init() {
+  appVersion.textContent = 'v' + browser.runtime.getManifest().version;
+
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     const currentTab = tabs[0];
@@ -138,14 +142,32 @@ function renderActiveDownloads() {
     titleSpan.textContent = dl.title || dl.ourn;
     titleSpan.title = dl.title || dl.ourn;
 
-    const progressSpan = document.createElement('span');
-    progressSpan.className = 'adl-progress';
     const total = Number(dl.total) || 0;
     const current = Number(dl.current) || 0;
     const percentage = total > 0 ? Math.min(100, Math.max(0, Math.round((current / total) * 100))) : 0;
-    progressSpan.textContent = dl.message ? `${percentage}% — ${dl.message}` : `${percentage}%`;
 
-    li.appendChild(titleSpan);
+    const pctSpan = document.createElement('span');
+    pctSpan.className = 'pct';
+    pctSpan.textContent = `${percentage}%`;
+
+    const head = document.createElement('div');
+    head.className = 'adl-head';
+    head.appendChild(titleSpan);
+    head.appendChild(pctSpan);
+
+    const track = document.createElement('div');
+    track.className = 'track sm';
+    const bar = document.createElement('div');
+    bar.className = 'progress-bar';
+    bar.style.width = percentage + '%';
+    track.appendChild(bar);
+
+    const progressSpan = document.createElement('span');
+    progressSpan.className = 'adl-progress';
+    progressSpan.textContent = dl.message || `${current}/${total} files`;
+
+    li.appendChild(head);
+    li.appendChild(track);
     li.appendChild(progressSpan);
     activeDownloadsList.appendChild(li);
   }
@@ -160,8 +182,8 @@ async function checkCacheStatus(ourn) {
   try {
     const response = await browser.runtime.sendMessage({ type: 'GET_CACHE_STATS', ourn });
     if (response.success && response.data.cachedFiles > 0) {
-      cacheStatusText.textContent = `${response.data.cachedFiles} files cached for this book`;
-      downloadCachedBtn.classList.remove('hidden');
+      cacheStatusText.textContent = `${response.data.cachedFiles} cached`;
+      cacheMeta.classList.remove('hidden');
       forceDownloadBtn.classList.remove('hidden');
       clearCacheBtn.classList.remove('hidden');
       cacheSection.classList.remove('hidden');
@@ -180,7 +202,7 @@ function showBookInfo(data) {
   downloadSection.classList.remove('hidden');
 
   bookTitle.textContent = data.title;
-  bookIsbn.textContent = `ISBN: ${data.isbn || 'N/A'}`;
+  bookIsbn.textContent = data.isbn || 'N/A';
 }
 
 /**
@@ -230,7 +252,7 @@ function showSuccess(failedFiles, fromCache) {
 function updateProgress(current, total, message = '') {
   const percentage = Math.round((current / total) * 100);
   progressBar.style.width = percentage + '%';
-  progressBar.textContent = percentage + '%';
+  progressPct.textContent = percentage + '%';
 
   if (message) {
     progressText.textContent = message;
@@ -346,10 +368,6 @@ downloadBtn.addEventListener('click', () => {
   startDownload({ useCache: true, forceRefresh: false });
 });
 
-downloadCachedBtn.addEventListener('click', () => {
-  startDownload({ useCache: true, forceRefresh: false });
-});
-
 forceDownloadBtn.addEventListener('click', () => {
   startDownload({ useCache: false, forceRefresh: true });
 });
@@ -360,6 +378,7 @@ clearCacheBtn.addEventListener('click', async () => {
   try {
     await browser.runtime.sendMessage({ type: 'DELETE_CACHED_BOOK', ourn });
     cacheSection.classList.add('hidden');
+    cacheMeta.classList.add('hidden');
   } catch (err) {
     console.error('Failed to clear cache:', err);
   }

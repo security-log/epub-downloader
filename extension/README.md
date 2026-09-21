@@ -84,10 +84,10 @@ extension/
 │   └── popup.css          # Popup styles
 ├── lib/
 │   └── jszip.min.js       # ZIP compression library
+├── fonts/                 # Space Grotesk + JetBrains Mono (woff2, SIL OFL)
 └── icons/
-    ├── icon-16.png        # Toolbar icon (16x16)
-    ├── icon-48.png        # Extension icon (48x48)
-    └── icon-128.png       # Store icon (128x128)
+    ├── icon-48.png        # Toolbar/extension icon (48x48)
+    └── icon-96.png        # High-DPI icon (96x96)
 ```
 
 ## Authentication
@@ -161,7 +161,6 @@ GET /api/v2/epubs/{ourn}/files/{filename}    # Individual file
 
 ## Known Issues
 
-- [ ] Icons are placeholders (TODO: create proper icons)
 - [ ] No settings page yet
 
 ## Roadmap

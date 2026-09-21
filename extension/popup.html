@@ -7,91 +7,144 @@
   <link rel="stylesheet" href="styles/popup.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>📚 O'Reilly EPUB Downloader</h1>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter">
+        <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter">
+        <path d="m5 12.5 4.5 4.5L19 7.5"/>
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter">
+        <path d="M12 3 2.5 20h19L12 3z"/><path d="M12 10v4"/><path d="M12 17v.5"/>
+      </symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16v.5"/>
+      </symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+        <path d="m9 6 6 6-6 6"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <header class="bar">
+      <img class="logo" src="icons/icon-48.png" alt="" width="20" height="20">
+      <h1 class="brand">EPUB Downloader</h1>
+      <span class="tag" id="app-version"></span>
     </header>
 
     <main>
-      <div id="status-section">
-        <p id="status-message">Open a book on O'Reilly Learning to download it</p>
-      </div>
+      <section class="sec" aria-labelledby="sec-book">
+        <h2 class="label" id="sec-book">Book</h2>
 
-      <div id="book-info" class="hidden">
-        <h2 id="book-title">Book Title</h2>
-        <p id="book-metadata">
-          <span id="book-isbn"></span>
-        </p>
-      </div>
+        <div id="status-section" class="empty">
+          <span class="empty-code">No book detected</span>
+          <p id="status-message">Open a book on O'Reilly Learning to download it</p>
+        </div>
 
-      <div id="cache-section" class="hidden">
-        <div class="cache-info">
-          <span id="cache-status-text"></span>
-          <div class="cache-actions">
-            <button id="download-cached-btn" class="secondary-btn hidden">Rebuild from Cache</button>
-            <button id="force-download-btn" class="secondary-btn hidden">Force Re-download</button>
-            <button id="clear-cache-btn" class="text-btn hidden">Clear Cache</button>
+        <div id="book-info" class="hidden">
+          <h3 id="book-title">Book Title</h3>
+          <p id="book-metadata" class="meta">
+            <span>ISBN <span id="book-isbn"></span></span>
+            <span id="cache-meta" class="hidden"><span class="sep" aria-hidden="true">/</span><span id="cache-status-text"></span></span>
+          </p>
+        </div>
+
+        <div id="error-section" class="hidden">
+          <div class="alert error" role="alert">
+            <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
+            <div class="alert-body">
+              <span class="alert-code">Error</span>
+              <p id="error-message"></p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div id="download-section" class="hidden">
-        <button id="download-btn" class="primary-btn">
-          📥 Download EPUB
-        </button>
-      </div>
-
-      <div id="confirm-section" class="hidden">
-        <div class="confirm-box">
-          <p id="confirm-message"></p>
-          <div class="confirm-actions">
-            <button id="confirm-yes-btn" class="secondary-btn">Download anyway</button>
-            <button id="confirm-no-btn" class="text-btn">Cancel</button>
+        <div id="success-section" class="hidden">
+          <div class="alert success" role="status">
+            <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+            <div class="alert-body">
+              <span class="alert-code">Complete</span>
+              <p>EPUB saved to your downloads folder</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div id="active-downloads-section" class="hidden">
-        <h3 class="section-title">Downloads in progress</h3>
+        <div id="warning-section" class="hidden">
+          <div class="alert warning">
+            <svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg>
+            <div class="alert-body">
+              <span class="alert-code">Partial</span>
+              <p id="warning-message"></p>
+              <details>
+                <summary>Show failed files</summary>
+                <ul id="failed-files-list"></ul>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <div id="confirm-section" class="hidden">
+          <div class="alert warning">
+            <svg class="icon" aria-hidden="true"><use href="#i-warn"/></svg>
+            <div class="alert-body">
+              <span class="alert-code">Busy</span>
+              <p id="confirm-message"></p>
+              <div class="actions">
+                <button id="confirm-yes-btn" class="btn">Download anyway</button>
+                <button id="confirm-no-btn" class="link">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="progress-section" class="hidden">
+          <div class="progress-row">
+            <p id="progress-text">Downloading files... 0/0</p>
+            <span class="pct" id="progress-pct">0%</span>
+          </div>
+          <div class="track">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+        </div>
+
+        <div id="download-section" class="hidden">
+          <button id="download-btn" class="btn primary">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>Download EPUB</span>
+          </button>
+        </div>
+
+        <div id="cache-section" class="hidden">
+          <div class="actions">
+            <button id="force-download-btn" class="link hidden">Re-download from source</button>
+            <span class="sep" aria-hidden="true">/</span>
+            <button id="clear-cache-btn" class="link danger hidden">Clear cache</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="active-downloads-section" class="sec hidden" aria-labelledby="sec-queue">
+        <h2 class="label" id="sec-queue">Queue</h2>
         <ul id="active-downloads-list"></ul>
-      </div>
+      </section>
 
-      <div id="progress-section" class="hidden">
-        <div class="progress-container">
-          <div class="progress-bar" id="progress-bar"></div>
-        </div>
-        <p id="progress-text">Downloading files... 0/0</p>
-      </div>
-
-      <div id="error-section" class="hidden">
-        <p id="error-message" class="error"></p>
-      </div>
-
-      <div id="warning-section" class="hidden">
-        <div class="warning">
-          <p id="warning-message"></p>
-          <details>
-            <summary>Show failed files</summary>
-            <ul id="failed-files-list"></ul>
-          </details>
-        </div>
-      </div>
-
-      <div id="success-section" class="hidden">
-        <p class="success">✅ EPUB downloaded successfully!</p>
-      </div>
-
-      <div id="history-section" class="hidden">
+      <section id="history-section" class="sec hidden">
         <details>
-          <summary class="history-toggle">Download History</summary>
+          <summary class="label history-toggle">
+            <span>History</span>
+            <svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>
+          </summary>
           <ul id="history-list"></ul>
-          <button id="clear-history-btn" class="text-btn">Clear History</button>
+          <button id="clear-history-btn" class="link">Clear history</button>
         </details>
-      </div>
+      </section>
     </main>
 
     <footer>
-      <p class="info">Make sure you're logged in to O'Reilly Learning</p>
+      <p>Requires an active O'Reilly Learning session</p>
+      <p>For the Emperor. Made with love by <a href="https://github.com/security-log/epub-downloader" target="_blank" rel="noopener noreferrer">security-log/epub-downloader</a></p>
     </footer>
   </div>
 
