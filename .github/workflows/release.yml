@@ -9,82 +9,105 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  package:
     runs-on: ubuntu-latest
-    
+
+    strategy:
+      matrix:
+        target: [ firefox, chrome ]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
-      - name: Build extension package
+
+      - name: Package extension
+        id: package
+        uses: ./.github/actions/package-extension
+        with:
+          target: ${{ matrix.target }}
+          version: ${{ github.ref_name }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            ${{ steps.package.outputs.package }}
+            ${{ steps.package.outputs.package }}.sha256
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+
+      - name: Generate checksums
         run: |
-          cd extension
-          zip -r ../oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip . \
-            -x "*.git*" \
-            -x "test-*.html" \
-            -x "README.md" \
-            -x ".DS_Store"
-          cd ..
-      
-      - name: Generate checksum
-        run: |
-          sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip > checksums.txt
+          cat *.sha256 > checksums.txt
           cat checksums.txt
-      
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
-            oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
+            oreilly-epub-downloader-${{ github.ref_name }}-firefox.zip
+            oreilly-epub-downloader-${{ github.ref_name }}-chrome.zip
             checksums.txt
           body: |
-            # O'Reilly EPUB Downloader ${{ steps.get_version.outputs.VERSION }}
-            
+            # O'Reilly EPUB Downloader ${{ github.ref_name }}
+
             ## 📦 Installation
-            
-            1. Download `oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip`
+
+            ### Firefox
+
+            1. Download `oreilly-epub-downloader-${{ github.ref_name }}-firefox.zip`
             2. Extract the ZIP file
             3. Open Firefox and go to `about:debugging`
             4. Click "This Firefox" → "Load Temporary Add-on"
             5. Select `manifest.json` from the extracted folder
-            
+
+            ### Chrome (116+)
+
+            1. Download `oreilly-epub-downloader-${{ github.ref_name }}-chrome.zip`
+            2. Extract the ZIP file
+            3. Open Chrome and go to `chrome://extensions`
+            4. Enable "Developer mode"
+            5. Click "Load unpacked" and select the extracted folder
+
             ## ✨ Features
-            
+
             - ✅ One-click EPUB downloads from O'Reilly Learning Platform
             - ✅ Complete book content with images and formatting
             - ✅ Automatic authentication using browser session
             - ✅ Valid EPUB files compatible with Calibre and other readers
             - ✅ Progress tracking during download
-            
+
             ## 🔐 Verification
-            
+
             Verify the download integrity:
             ```bash
-            sha256sum oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip
-            # Compare with checksums.txt
+            sha256sum -c checksums.txt --ignore-missing
             ```
-            
+
             ## 📚 Documentation
-            
-            See [README.md](https://github.com/${{ github.repository }}/blob/${{ steps.get_version.outputs.VERSION }}/README.md) for complete documentation.
-            
+
+            See [README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/README.md) for complete documentation.
+
             ## ⚠️ Note
-            
-            This is a temporary installation method. For permanent installation, the extension needs to be signed or published to Firefox Add-ons store.
+
+            These are unpacked installs. For permanent installation, the extension needs to be signed and published to Firefox Add-ons or the Chrome Web Store.
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Summary
         run: |
           echo "### ✅ Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** oreilly-epub-downloader-${{ steps.get_version.outputs.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Users can now download and install the extension!" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Packages:** firefox, chrome" >> $GITHUB_STEP_SUMMARY

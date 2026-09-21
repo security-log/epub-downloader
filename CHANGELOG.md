@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Chrome support (116+): background runs as an MV3 service worker, with an offscreen document for HTML sanitization and EPUB blob URLs
+- Releases now ship separate `-firefox.zip` and `-chrome.zip` packages
+
+### Removed
+- Unused `web_accessible_resources` entry exposing JSZip to O'Reilly pages
+
 ### Planned
 - Generate proper extension icons (currently using placeholders)
 - Better error handling with retry logic

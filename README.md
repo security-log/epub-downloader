@@ -1,6 +1,6 @@
 # O'Reilly EPUB Downloader
 
-**Firefox Extension** for downloading books from O'Reilly Learning Platform as EPUB files.
+**Browser Extension** (Firefox and Chrome) for downloading books from O'Reilly Learning Platform as EPUB files.
 <img width="2522" height="1496" alt="image" src="https://github.com/user-attachments/assets/0860d54e-60ac-4510-a5c3-de114c0b85f1" />
 
 
@@ -15,20 +15,42 @@
 
 ## Requirements
 
-- **Firefox** browser
+- **Firefox** 115+ or **Chrome** 116+
 - **O'Reilly Learning** subscription (active and logged in)
 
 ## Installation
 
 ### Download from Releases
 
-1. Go to [Releases](https://github.com/security-log/epub-downloader/releases)
-2. Download the latest `oreilly-epub-downloader-vX.X.X.zip`
-3. Extract the ZIP file
-4. Load in Firefox:
-   - Open `about:debugging`
-   - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `manifest.json` from extracted folder
+Each [release](https://github.com/security-log/epub-downloader/releases) ships one package per browser.
+
+**Firefox**
+
+1. Download `oreilly-epub-downloader-vX.X.X-firefox.zip` and extract it
+2. Open `about:debugging`
+3. Click "This Firefox" → "Load Temporary Add-on"
+4. Select `manifest.json` from the extracted folder
+
+**Chrome**
+
+1. Download `oreilly-epub-downloader-vX.X.X-chrome.zip` and extract it
+2. Open `chrome://extensions` and enable "Developer mode"
+3. Click "Load unpacked" and select the extracted folder
+
+### From Source
+
+The `extension/` folder loads as-is in Firefox. For Chrome, build the
+Chrome manifest first (the same transform the release workflow applies):
+
+```bash
+rm -rf build && cp -r extension build
+jq '.background = { service_worker: "sw.js" }
+    | .permissions += ["offscreen"]
+    | .minimum_chrome_version = "116"
+    | del(.browser_specific_settings)' extension/manifest.json > build/manifest.json
+```
+
+Then load `build/` with "Load unpacked".
 
 ## Usage Guide
 

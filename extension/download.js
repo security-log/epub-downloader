@@ -102,7 +102,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
       const epubBlob = await buildEPUB(zip, bookOurn);
       sendProgress(95, 100, 'Saving file...');
       const filename = sanitizeFilename(`${metadata.title}-${metadata.isbn}.epub`);
-      await saveFile(epubBlob, filename);
+      await downloadBlob(epubBlob, filename);
       await addToHistory(metadata, bookOurn, filename, []);
       sendProgress(100, 100, 'Download complete!');
       return { success: true, filename, failedFiles: [], fromCache: cachedPaths.size };
@@ -150,7 +150,7 @@ async function downloadEPUB(bookData, options = { useCache: true, forceRefresh: 
 
     sendProgress(95, 100, 'Saving file...');
     const filename = sanitizeFilename(`${metadata.title}-${metadata.isbn}.epub`);
-    await saveFile(epubBlob, filename);
+    await downloadBlob(epubBlob, filename);
 
     await addToHistory(metadata, bookOurn, filename, failedFiles);
 
@@ -245,7 +245,11 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
   const pool = new ConcurrencyPool(CONCURRENCY, STAGGER_MS);
 
   const tasks = files.map((file) => async () => {
-    const content = await downloadFileWithRetry(file.url, jwtToken);
+    let content = await downloadFileWithRetry(file.url, jwtToken);
+    const isHTML = file.media_type === 'application/xhtml+xml' || file.media_type === 'text/html';
+    if (isHTML && typeof content === 'string') {
+      content = await cleanHTML(content, metadata.ourn || bookOurn, file.full_path);
+    }
     return { file, content };
   });
 
@@ -261,21 +265,15 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
 
     const { file, content } = result;
     const fullPath = `OEBPS/${sanitizeZipPath(file.full_path)}`;
-    let processedContent = content;
-
-    const isHTML = file.media_type === 'application/xhtml+xml' || file.media_type === 'text/html';
-    if (isHTML && typeof content === 'string') {
-      processedContent = cleanHTML(content, metadata.ourn || bookOurn, file.full_path);
-    }
 
     if (file.media_type === 'application/oebps-package+xml') {
       zip.file('META-INF/container.xml', generateContainerXml(fullPath), { compression: 'STORE' });
     }
 
-    zip.file(fullPath, processedContent, zipOptions(file.media_type));
+    zip.file(fullPath, content, zipOptions(file.media_type));
 
     BookCache.saveFile(bookOurn, file.full_path, {
-      content: processedContent,
+      content,
       mediaType: file.media_type,
       kind: file.kind
     }).catch(err => console.warn('Cache write failed for', file.full_path, err));
@@ -367,12 +365,9 @@ async function buildEPUB(zip, ourn) {
 /**
  * Clean HTML content and fix relative paths
  */
-function cleanHTML(content, ourn, filePath) {
-  // SEC-02: use DOMParser to remove script elements structurally
-  // BUG-02: do NOT remove <link> elements — stylesheets must survive
-  const doc = new DOMParser().parseFromString(content, 'text/html');
-  doc.querySelectorAll('script').forEach(el => el.remove());
-  content = doc.documentElement.outerHTML;
+async function cleanHTML(content, ourn, filePath) {
+  // SEC-02: remove script elements structurally (see platform.js)
+  content = await sanitizeHTML(content);
 
   if (ourn) {
     const apiPath = `/api/v2/epubs/${ourn}/files/`;
@@ -397,30 +392,6 @@ function cleanHTML(content, ourn, filePath) {
   content = content.replace(/<image([^>]*)href="(?!http)/gi, `<image$1href="${relativePrefix}`);
 
   return content;
-}
-
-/**
- * Save file using browser downloads API
- */
-async function saveFile(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  let downloadStarted = false;
-
-  try {
-    await browser.downloads.download({
-      url: url,
-      filename: filename,
-      saveAs: true
-    });
-    downloadStarted = true;
-    // Browser download manager needs the URL alive briefly; revoke after 10 s
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  } finally {
-    if (!downloadStarted) {
-      // Exception thrown before or during download — revoke immediately
-      URL.revokeObjectURL(url);
-    }
-  }
 }
 
 /**
