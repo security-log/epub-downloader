@@ -46,7 +46,7 @@
    - ISBN
    - Download button
 
-4. Click "📥 Download EPUB"
+4. Click "Download EPUB"
 
 6. EPUB will be saved to your Downloads folder
 
