@@ -22,7 +22,7 @@
       'https://user@learning.oreilly.com/file',
       'javascript:alert(1)'
     ]) {
-      check(`rejects ${url}`, await rejects(() => Promise.resolve(validateAuthenticatedUrl(url))));
+      check(`rejects ${url}`, await rejects(() => validateAuthenticatedUrl(url)));
     }
 
     let fetchCount = 0;

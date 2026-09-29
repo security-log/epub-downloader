@@ -264,8 +264,7 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
   const pool = new ConcurrencyPool(CONCURRENCY, STAGGER_MS);
 
   const tasks = files.map((file) => async () => {
-    const safeUrl = validateAuthenticatedUrl(file.url);
-    const content = await downloadFileWithRetry(safeUrl, jwtToken);
+    const content = await downloadFileWithRetry(file.url, jwtToken);
     return { file, content };
   });
 
@@ -326,7 +325,6 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
  * Download a single file with retry
  */
 async function downloadFileWithRetry(url, jwtToken) {
-  url = validateAuthenticatedUrl(url);
   const response = await fetchWithRetry(url, {
     headers: {
       'Accept': '*/*',
@@ -344,10 +342,6 @@ async function downloadFileWithRetry(url, jwtToken) {
     return await response.text();
   }
   return await response.arrayBuffer();
-}
-
-if (typeof globalThis !== 'undefined') {
-  globalThis.validateAuthenticatedUrl = validateAuthenticatedUrl;
 }
 
 /**
