@@ -10,6 +10,24 @@ const CONCURRENCY = 10;
 const STAGGER_MS = 50;
 const RATE_LIMIT_DELAY = 100;
 const PRE_COMPRESSED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+// The API and its file endpoints use the learning host. Keep this exact: a
+// suffix check would also trust attacker-controlled names such as
+// learning.oreilly.com.example.org.
+const TRUSTED_FILE_HOSTS = new Set(['learning.oreilly.com']);
+
+function validateAuthenticatedUrl(value, baseUrl) {
+  let url;
+  try {
+    url = new URL(value, baseUrl || API_BASE);
+  } catch (_) {
+    throw new Error(`Invalid O'Reilly URL: ${value}`);
+  }
+  if (url.protocol !== 'https:' || (url.port && url.port !== '443') ||
+      url.username || url.password || !TRUSTED_FILE_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new Error(`Untrusted O'Reilly URL: ${value}`);
+  }
+  return url.href;
+}
 
 function zipOptions(mediaType) {
   if (PRE_COMPRESSED_TYPES.has(mediaType)) {
@@ -198,7 +216,7 @@ async function getBookMetadata(identifier, jwtToken) {
  */
 async function getAllFiles(filesUrl, jwtToken) {
   let allFiles = [];
-  let nextUrl = filesUrl;
+  let nextUrl = validateAuthenticatedUrl(filesUrl);
 
   while (nextUrl) {
     const response = await fetchWithRetry(nextUrl, {
@@ -219,12 +237,10 @@ async function getAllFiles(filesUrl, jwtToken) {
       if (typeof rawNext !== 'string') {
         throw new Error(`Unexpected pagination URL type: ${typeof rawNext}`);
       }
-      const nextHostname = new URL(rawNext).hostname;
-      if (!nextHostname.endsWith('.oreilly.com') && nextHostname !== 'learning.oreilly.com') {
-        throw new Error(`Pagination URL left oreilly.com domain: ${rawNext}`);
-      }
+      nextUrl = validateAuthenticatedUrl(rawNext, nextUrl);
+    } else {
+      nextUrl = null;
     }
-    nextUrl = rawNext ?? null;
 
     await sleep(RATE_LIMIT_DELAY);
   }
@@ -237,6 +253,9 @@ async function getAllFiles(filesUrl, jwtToken) {
  */
 async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalFileCount, fromCache, sendProgress) {
   const failedFiles = [];
+  const cacheWrites = [];
+  // Reject an unexpected host before starting any authenticated request.
+  files.forEach(file => validateAuthenticatedUrl(file.url));
   let completedFiles = fromCache;
 
   // mimetype MUST be added first and MUST use STORE (EPUB spec requirement)
@@ -245,7 +264,8 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
   const pool = new ConcurrencyPool(CONCURRENCY, STAGGER_MS);
 
   const tasks = files.map((file) => async () => {
-    const content = await downloadFileWithRetry(file.url, jwtToken);
+    const safeUrl = validateAuthenticatedUrl(file.url);
+    const content = await downloadFileWithRetry(safeUrl, jwtToken);
     return { file, content };
   });
 
@@ -274,16 +294,23 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
 
     zip.file(fullPath, processedContent, zipOptions(file.media_type));
 
-    BookCache.saveFile(bookOurn, file.full_path, {
+    const cacheWrite = Promise.resolve().then(() => BookCache.saveFile(bookOurn, file.full_path, {
       content: processedContent,
       mediaType: file.media_type,
       kind: file.kind
-    }).catch(err => console.warn('Cache write failed for', file.full_path, err));
+    }));
+    // Promise.all is attached after the worker pool settles; mark the promise
+    // handled now as well so an early IDB rejection is never unhandled.
+    cacheWrite.catch(() => {});
+    cacheWrites.push(cacheWrite);
 
     sendProgress(progress, 100, `Downloaded ${completedFiles}/${totalFileCount} files`);
   };
 
   await pool.run(tasks, onComplete);
+  // Do not report a complete cache or build an EPUB until every IndexedDB
+  // transaction has committed. A rejected write fails the download.
+  await Promise.all(cacheWrites);
 
   zip.file('META-INF/com.apple.ibooks.display-options.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <display_options>
@@ -299,6 +326,7 @@ async function downloadAllFiles(zip, files, jwtToken, metadata, bookOurn, totalF
  * Download a single file with retry
  */
 async function downloadFileWithRetry(url, jwtToken) {
+  url = validateAuthenticatedUrl(url);
   const response = await fetchWithRetry(url, {
     headers: {
       'Accept': '*/*',
@@ -316,6 +344,10 @@ async function downloadFileWithRetry(url, jwtToken) {
     return await response.text();
   }
   return await response.arrayBuffer();
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.validateAuthenticatedUrl = validateAuthenticatedUrl;
 }
 
 /**
