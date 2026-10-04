@@ -33,8 +33,10 @@ def command(repo, *args):
 def run(repo, path, name, **env):
     output = repo / 'output'
     output.write_text('')
-    subprocess.run(['bash', '-c', block(path, name)], cwd=repo, check=True,
-                   env=dict(os.environ, GITHUB_OUTPUT=str(output), **env), capture_output=True, text=True)
+    result = subprocess.run(['bash', '-c', block(path, name)], cwd=repo,
+                            env=dict(os.environ, GITHUB_OUTPUT=str(output), **env), capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f'{name} failed:\n{result.stdout}\n{result.stderr}')
     return dict(line.split('=', 1) for line in output.read_text().splitlines())
 
 
@@ -75,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix='check-releases-') as directory:
         remote_tag = command(repo, 'git', 'ls-remote', 'origin', f'refs/tags/{expected}')
         assert remote_tag
         retry = run(repo, RELEASE, 'Calculate release version', LABELS=labels, PR_NUMBER=number)
-        assert retry['tag'] == expected and retry['reused'] == 'true'
+        assert retry['tag'] == expected and retry.get('reused') == 'true', retry
         assert retry['previous_tag'] == version['previous_tag']
         assert f'## [{version["version"]}]' not in original_changelog
     assert (repo / 'CHANGELOG.md').read_text().count('## [1.3.1]') == 1

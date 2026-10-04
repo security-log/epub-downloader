@@ -57,7 +57,7 @@ jobs:
             test -f "$file"
           done
 
-          if rg -n '^(<<<<<<<|=======|>>>>>>>)' extension; then
+          if grep -RnE '^(<<<<<<<|=======|>>>>>>>)' extension; then
             echo "Unresolved merge marker found in extension source." >&2
             exit 1
           fi

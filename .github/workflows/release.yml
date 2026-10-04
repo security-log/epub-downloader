@@ -52,7 +52,7 @@ jobs:
             if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               # A full rerun must reuse the tag already created for this PR.
               message="$(git for-each-ref --format='%(contents)' "refs/tags/$candidate")"
-              if rg -qx "Release-PR: $PR_NUMBER" <<<"$message"; then
+              if grep -Fxq "Release-PR: $PR_NUMBER" <<<"$message"; then
                 echo "tag=$candidate" >> "$GITHUB_OUTPUT"
                 echo "version=${candidate#v}" >> "$GITHUB_OUTPUT"
                 echo "previous_tag=$(sed -n 's/^Previous-Tag: //p' <<<"$message")" >> "$GITHUB_OUTPUT"
