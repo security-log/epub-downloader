@@ -21,6 +21,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Check release automation
+        run: python3 .github/check-releases.py
+
       - name: Validate manifest
         shell: bash
         run: |

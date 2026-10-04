@@ -109,6 +109,9 @@ label, the release is a patch release.
 The `develop` → `main` PR receives a replaceable release candidate for testing.
 Apply `skip-changelog` to omit a PR from the generated release notes.
 
+Releases include Firefox packages and also Chrome packages once Chrome support is
+merged. Retrying all jobs for the same PR reuses its existing release tag.
+
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request with a clear

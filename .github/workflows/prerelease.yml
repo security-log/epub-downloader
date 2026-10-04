@@ -25,6 +25,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
       previous_tag: ${{ steps.version.outputs.previous_tag }}
+      targets: ${{ steps.browsers.outputs.targets }}
 
     steps:
       - name: Check out pull request
@@ -86,12 +87,25 @@ jobs:
           git tag -fa "$TAG" -m "Release candidate $TAG"
           git push --force origin "refs/tags/$TAG"
 
+      - name: Select browser builds
+        id: browsers
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets='["firefox"]'
+          if git cat-file -e "$TAG:extension/sw.js" 2>/dev/null; then
+            targets='["firefox","chrome"]'
+          fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
   package:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [firefox, chrome]
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
 
     steps:
       - name: Check out candidate tag
@@ -160,9 +174,8 @@ jobs:
 
             ## Included files
 
-            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip`
-            - `oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip`
-            - `checksums.txt` — SHA-256 hashes for both packages
+            - Browser-specific ZIP packages
+            - `checksums.txt` — SHA-256 hashes for the attached packages
 
             ## Installation and verification
 
@@ -179,8 +192,7 @@ jobs:
             It is for testing only; the final release is published after merge and
             includes the generated changelog.
           files: |
-            oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-firefox.zip
-            oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-chrome.zip
+            oreilly-epub-downloader-${{ needs.prepare.outputs.tag }}-*.zip
             checksums.txt
           fail_on_unmatched_files: true
           draft: false
