@@ -111,6 +111,9 @@ Apply `skip-changelog` to omit a PR from the generated release notes.
 
 Releases include Firefox packages and also Chrome packages once Chrome support is
 merged. Retrying all jobs for the same PR reuses its existing release tag.
+Each stable tag points to that PR's merge commit. The package manifest receives
+the release version during packaging; version and changelog updates are saved
+separately on `main`.
 
 ## Contributing
 

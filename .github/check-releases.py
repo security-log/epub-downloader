@@ -60,6 +60,7 @@ with tempfile.TemporaryDirectory(prefix='check-releases-') as directory:
     command(repo, 'git', 'add', 'extension', 'CHANGELOG.md')
     command(repo, 'git', 'commit', '-m', 'Initial source')
     command(repo, 'git', 'tag', 'v1.3.0')
+    command(repo, 'git', 'push', 'origin', 'main', '--tags')
 
     for labels, expected in [('[]', 'v1.3.1'), ('["release:patch"]', 'v1.3.1'),
                              ('["release:minor"]', 'v1.4.0'),
@@ -67,22 +68,58 @@ with tempfile.TemporaryDirectory(prefix='check-releases-') as directory:
         assert run(repo, RELEASE, 'Calculate release version', LABELS=labels, PR_NUMBER='42')['tag'] == expected
 
     original_changelog = (repo / 'CHANGELOG.md').read_text()
+    # Both PRs merge before the first queued release starts.
+    merges = {}
+    for number in ('42', '43'):
+        (repo / 'extension' / f'pr-{number}.txt').write_text(f'Source from PR {number}')
+        command(repo, 'git', 'add', 'extension')
+        command(repo, 'git', 'commit', '-m', f'Merge PR {number}')
+        merges[number] = command(repo, 'git', 'rev-parse', 'HEAD')
+    command(repo, 'git', 'push', 'origin', 'main')
     for number, labels, expected in [('42', '[]', 'v1.3.1'), ('43', '["skip-changelog"]', 'v1.3.2')]:
         version = run(repo, RELEASE, 'Calculate release version', LABELS=labels, PR_NUMBER=number)
         assert version['tag'] == expected
+        if number == '42':
+            # Main advances after checkout while this release is preparing metadata.
+            concurrent = Path(directory) / 'concurrent'
+            command(repo, 'git', 'clone', '--branch', 'main', origin, str(concurrent))
+            (concurrent / 'extension/later-main.txt').write_text('Concurrent change')
+            command(concurrent, 'git', 'add', 'extension/later-main.txt')
+            command(concurrent, 'git', '-c', 'user.name=Check', '-c', 'user.email=check@example.invalid',
+                    'commit', '-m', 'Advance main during release')
+            command(concurrent, 'git', 'push', 'origin', 'main')
         run(repo, RELEASE, 'Update extension version and create tag',
             VERSION=version['version'], TAG=version['tag'], CATEGORY=version['category'],
             UPDATE_CHANGELOG=version['update_changelog'], PR_NUMBER=number,
-            PREVIOUS_TAG=version['previous_tag'], PR_TITLE='Example PR', PR_URL=f'https://example.invalid/{number}')
+            PREVIOUS_TAG=version['previous_tag'], MERGE_SHA=merges[number],
+            PR_TITLE='Example PR', PR_URL=f'https://example.invalid/{number}')
         remote_tag = command(repo, 'git', 'ls-remote', 'origin', f'refs/tags/{expected}')
         assert remote_tag
+        assert command(repo, 'git', 'rev-parse', f'{expected}^{{commit}}') == merges[number]
+        assert command(repo, 'git', 'show', f'{expected}:extension/pr-{number}.txt') == f'Source from PR {number}'
         retry = run(repo, RELEASE, 'Calculate release version', LABELS=labels, PR_NUMBER=number)
         assert retry['tag'] == expected and retry.get('reused') == 'true', retry
         assert retry['previous_tag'] == version['previous_tag']
         assert f'## [{version["version"]}]' not in original_changelog
     assert (repo / 'CHANGELOG.md').read_text().count('## [1.3.1]') == 1
     assert '## [1.3.2]' not in (repo / 'CHANGELOG.md').read_text()
+    assert 'extension/pr-43.txt' not in command(repo, 'git', 'ls-tree', '-r', '--name-only', 'v1.3.1').splitlines()
+    assert command(repo, 'git', 'show', 'origin/main:extension/pr-43.txt') == 'Source from PR 43'
+    assert command(repo, 'git', 'show', 'origin/main:extension/later-main.txt') == 'Concurrent change'
+    assert 'extension/later-main.txt' not in command(repo, 'git', 'ls-tree', '-r', '--name-only', 'v1.3.2').splitlines()
     assert run(repo, RELEASE, 'Calculate release version', LABELS='[]', PR_NUMBER='42')['tag'] == 'v1.3.1'
+
+    # A PR may already set the target version and opt out of the changelog.
+    run(repo, RELEASE, 'Set release manifest version', VERSION='1.3.3')
+    command(repo, 'git', 'add', 'extension/manifest.json')
+    command(repo, 'git', 'commit', '-m', 'PR already sets its release version')
+    merge = command(repo, 'git', 'rev-parse', 'HEAD')
+    command(repo, 'git', 'push', 'origin', 'main')
+    run(repo, RELEASE, 'Update extension version and create tag',
+        VERSION='1.3.3', TAG='v1.3.3', CATEGORY='Changed', UPDATE_CHANGELOG='false',
+        PREVIOUS_TAG='v1.3.2', MERGE_SHA=merge, PR_NUMBER='44', PR_TITLE='Version update', PR_URL='https://example.invalid/44')
+    assert command(repo, 'git', 'rev-parse', 'HEAD') == merge
+    assert run(repo, RELEASE, 'Calculate release version', LABELS='[]', PR_NUMBER='44')['tag'] == 'v1.3.3'
 
     for workflow in (RELEASE, PRERELEASE):
         assert run(repo, workflow, 'Select browser builds', TAG='v1.3.1')['targets'] == '["firefox"]'
@@ -90,12 +127,14 @@ with tempfile.TemporaryDirectory(prefix='check-releases-') as directory:
         (repo / 'extension' / filename).write_text('// Chrome fixture')
     command(repo, 'git', 'add', 'extension')
     command(repo, 'git', 'commit', '-m', 'Chrome fixture')
-    command(repo, 'git', 'tag', 'v1.3.3')
+    command(repo, 'git', 'tag', 'v1.4.0')
     for workflow in (RELEASE, PRERELEASE):
-        assert run(repo, workflow, 'Select browser builds', TAG='v1.3.3')['targets'] == '["firefox","chrome"]'
+        assert run(repo, workflow, 'Select browser builds', TAG='v1.4.0')['targets'] == '["firefox","chrome"]'
         assert run(repo, workflow, 'Select browser builds', TAG='v1.3.1')['targets'] == '["firefox"]'
 
     for target in ('firefox', 'chrome'):
+        command(repo, 'git', 'checkout', 'v1.3.1' if target == 'firefox' else 'main')
+        run(repo, RELEASE, 'Set release manifest version', VERSION='1.3.1')
         run(repo, PACKAGE, 'Stage files', TARGET=target)
         package = run(repo, PACKAGE, 'Create ZIP', TARGET=target, VERSION='ci')['package']
         command(repo, 'sha256sum', '-c', package + '.sha256')
@@ -103,11 +142,14 @@ with tempfile.TemporaryDirectory(prefix='check-releases-') as directory:
             assert archive.testzip() is None
             assert 'test-jszip.html' not in archive.namelist() and 'README.md' not in archive.namelist()
             manifest = json.loads(archive.read('manifest.json'))
+            assert manifest['version'] == '1.3.1'
             if target == 'chrome':
                 assert manifest['background'] == {'service_worker': 'sw.js'}
                 assert 'sw.js' in archive.namelist() and 'offscreen' in manifest['permissions']
                 assert 'browser_specific_settings' not in manifest
             else:
                 assert manifest['background']['scripts'] and 'sw.js' not in archive.namelist()
+                assert 'pr-43.txt' not in archive.namelist() and 'later-main.txt' not in archive.namelist()
+        command(repo, 'git', 'restore', 'extension/manifest.json')
 
-print('Release checks passed: version labels, retries, changelog, browser selection, packages and checksums.')
+print('Release checks passed: queued PR snapshots, version labels, retries, changelog, browser selection, packages and checksums.')
