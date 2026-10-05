@@ -1,10 +1,17 @@
-name: Validate Extension
+name: Validate extension
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -18,25 +25,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check release automation
+        run: python3 .github/check-releases.py
+
       - name: Check manifest.json syntax
         run: |
           echo "Validating manifest.json..."
-          jq empty extension/manifest.json
+          jq -e '
+            .manifest_version == 3 and
+            (.name | type == "string" and length > 0) and
+            (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+            (.description | type == "string" and length > 0) and
+            (.permissions | type == "array")
+          ' extension/manifest.json > /dev/null
           echo "✅ manifest.json is valid JSON"
 
       - name: Check required files exist
         run: |
           echo "Checking required files..."
+          if grep -RnE '^(<<<<<<<|=======|>>>>>>>)' extension .github README.md; then
+            echo "Unresolved merge marker found." >&2
+            exit 1
+          fi
           FILES=(
             "extension/manifest.json"
             "extension/compat.js"
             "extension/background.js"
+            "extension/cache.js"
+            "extension/pool.js"
             "extension/content.js"
             "extension/download.js"
             "extension/platform.js"
             "extension/popup.html"
             "extension/popup.js"
             "extension/lib/jszip.min.js"
+            "scripts/build-extension.sh"
+            "scripts/bump-version.py"
           )
           if [ "${{ matrix.target }}" = "chrome" ]; then
             FILES+=(
@@ -89,6 +113,11 @@ jobs:
       - name: Check package
         run: |
           PACKAGE="${{ steps.package.outputs.package }}"
+          unzip -t "$PACKAGE" > /dev/null
+          if unzip -Z1 "$PACKAGE" | grep -E '(^|/)(test-.*\.html|README\.md)$'; then
+            echo "Development files found in package" >&2
+            exit 1
+          fi
           SIZE=$(stat -c%s "$PACKAGE")
           echo "Package size: $SIZE bytes"
 

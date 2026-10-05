@@ -75,13 +75,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'GET_CACHED_BOOKS') {
-    BookCache.listCachedBooks()
-      .then(books => sendResponse({ success: true, data: books }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
-
   if (message.type === 'GET_CACHE_STATS') {
     BookCache.getCachedFilePaths(message.ourn)
       .then(paths => sendResponse({ success: true, data: { cachedFiles: paths.size } }))
@@ -91,13 +84,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'DELETE_CACHED_BOOK') {
     BookCache.deleteBook(message.ourn)
-      .then(() => sendResponse({ success: true }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
-
-  if (message.type === 'CLEAR_ALL_CACHE') {
-    BookCache.clearAll()
       .then(() => sendResponse({ success: true }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;

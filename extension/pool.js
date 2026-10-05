@@ -50,6 +50,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
  * Concurrency-limited task pool
  * Runs up to `concurrency` tasks in parallel, starting new ones as slots open.
  * More efficient than fixed batching since it doesn't wait for all N to complete.
+ * Delivers each result or error to onComplete without retaining file contents.
  */
 class ConcurrencyPool {
   constructor(concurrency = 10, staggerMs = 50) {
@@ -59,8 +60,6 @@ class ConcurrencyPool {
 
   run(tasks, onComplete) {
     return new Promise((resolve) => {
-      const results = new Array(tasks.length);
-      const errors = [];
       let nextIndex = 0;
       let running = 0;
       let completed = 0;
@@ -74,16 +73,15 @@ class ConcurrencyPool {
 
           setTimeout(async () => {
             try {
-              results[idx] = await tasks[idx]();
-              if (onComplete) onComplete(idx, results[idx], null);
+              const result = await tasks[idx]();
+              if (onComplete) onComplete(idx, result, null);
             } catch (err) {
-              errors.push({ index: idx, error: err });
               if (onComplete) onComplete(idx, null, err);
             } finally {
               running--;
               completed++;
               if (completed >= tasks.length) {
-                resolve({ results, errors });
+                resolve();
               } else {
                 tryRunNext();
               }
@@ -93,7 +91,7 @@ class ConcurrencyPool {
       };
 
       if (tasks.length === 0) {
-        resolve({ results: [], errors: [] });
+        resolve();
       } else {
         tryRunNext();
       }

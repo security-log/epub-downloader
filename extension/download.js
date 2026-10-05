@@ -338,8 +338,7 @@ async function buildEPUB(zip, ourn) {
     throw new Error('JSZip library not loaded');
   }
 
-  // Load cached files one at a time from IndexedDB (PERF-01: no Map accumulation)
-  // cachedPaths and filesToDownload are disjoint by construction — no duplicate check needed
+  // getCachedFiles materializes the book's cached content in a Map before ZIP generation.
   const cached = await BookCache.getCachedFiles(ourn);
   for (const [fullPath, fileData] of cached) {
     const zipPath = `OEBPS/${sanitizeZipPath(fullPath)}`;

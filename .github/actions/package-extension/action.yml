@@ -17,35 +17,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Stage files
-      shell: bash
-      env:
-        TARGET: ${{ inputs.target }}
-      run: |
-        set -euo pipefail
-        rm -rf build
-        cp -r extension build
-        rm -f build/test-*.html build/README.md
-
-        case "$TARGET" in
-          firefox)
-            # Chrome-only service worker entry and offscreen document
-            rm -f build/sw.js build/offscreen.html build/offscreen.js
-            ;;
-          chrome)
-            jq '.background = { service_worker: "sw.js" }
-                | .permissions += ["offscreen"]
-                | .minimum_chrome_version = "116"
-                | del(.browser_specific_settings)' \
-              extension/manifest.json > build/manifest.json
-            ;;
-          *)
-            echo "Unknown target: $TARGET" >&2
-            exit 1
-            ;;
-        esac
-
-    - name: Create ZIP
+    - name: Build package
       id: zip
       shell: bash
       env:
@@ -53,7 +25,5 @@ runs:
         VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        PACKAGE="oreilly-epub-downloader-${VERSION}-${TARGET}.zip"
-        (cd build && zip -r -X "../$PACKAGE" . -x ".DS_Store")
-        sha256sum "$PACKAGE" > "$PACKAGE.sha256"
-        echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+        package="$(bash scripts/build-extension.sh "$TARGET" "$VERSION")"
+        echo "package=$package" >> "$GITHUB_OUTPUT"

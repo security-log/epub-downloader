@@ -70,26 +70,6 @@ const BookCache = (() => {
     });
   }
 
-  async function listCachedBooks() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('books', 'readonly');
-      const request = tx.objectStore('books').getAll();
-      request.onsuccess = () => {
-        resolve(request.result.map(b => ({
-          ourn: b.ourn,
-          title: b.title,
-          isbn: b.isbn,
-          fileCount: b.fileCount,
-          cachedFileCount: b.cachedFileCount,
-          complete: b.complete,
-          cachedAt: b.cachedAt
-        })));
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
-
   async function deleteBook(ourn) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -111,16 +91,6 @@ const BookCache = (() => {
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  async function getFile(ourn, fullPath) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('files', 'readonly');
-      const request = tx.objectStore('files').get([ourn, fullPath]);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
     });
   }
 
@@ -184,29 +154,6 @@ const BookCache = (() => {
     });
   }
 
-  async function getFiles(ourn) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('files', 'readonly');
-      const index = tx.objectStore('files').index('byBook');
-      const request = index.getAll(IDBKeyRange.only(ourn));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async function clearAll() {
-    if (dbInstance) {
-      dbInstance.close();
-      dbInstance = null;
-    }
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.deleteDatabase(DB_NAME);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
   async function storeFileManifest(ourn, fileUrlArray) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -235,17 +182,12 @@ const BookCache = (() => {
   }
 
   return {
-    openDB,
     getBookMeta,
     saveBookMeta,
-    listCachedBooks,
     deleteBook,
-    getFile,
     saveFile,
     getCachedFilePaths,
     getCachedFiles,
-    getFiles,
-    clearAll,
     storeFileManifest,
     getFileManifest
   };
