@@ -1,17 +1,34 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
+
+Entries for releases created after this workflow was introduced are added
+automatically when a pull request is merged into `main`. Each entry links to the
+pull request; the corresponding GitHub Release contains the full generated notes.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Chrome support (116+): background runs as an MV3 service worker, with an offscreen document for HTML sanitization and EPUB blob URLs
+- Releases now ship separate `-firefox.zip` and `-chrome.zip` packages
+
+### Removed
+- Unused `web_accessible_resources` entry exposing JSZip to O'Reilly pages
+
 ### Planned
 - Generate proper extension icons (currently using placeholders)
 - Better error handling with retry logic
 - Browser notifications on completion
 - Settings page for customization
+
+## [1.3.0] - 2026-09-21
+
+### Changed
+- Refined the extension popup interface
+- Updated project documentation and visuals
 
 ## [1.2.0] - 2026-07-09
 
@@ -66,5 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.0** - First working release with complete EPUB downloads
 - **0.1.0** - Initial development and research phase
 
-[Unreleased]: https://github.com/security-log/epub-downloader/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/security-log/epub-downloader/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/security-log/epub-downloader/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/security-log/epub-downloader/compare/v1.1.0...v1.2.0
 [1.0.0]: https://github.com/security-log/epub-downloader/releases/tag/v1.0.0

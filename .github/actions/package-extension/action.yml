@@ -1,0 +1,29 @@
+name: Package extension
+description: Build the browser-specific extension ZIP and its checksum
+
+inputs:
+  target:
+    description: Browser to package for (firefox or chrome)
+    required: true
+  version:
+    description: Version label used in the package file name
+    required: true
+
+outputs:
+  package:
+    description: Path to the generated ZIP
+    value: ${{ steps.zip.outputs.package }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build package
+      id: zip
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        package="$(bash scripts/build-extension.sh "$TARGET" "$VERSION")"
+        echo "package=$package" >> "$GITHUB_OUTPUT"

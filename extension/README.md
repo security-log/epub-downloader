@@ -1,212 +1,107 @@
-# O'Reilly EPUB Downloader - Firefox Extension
+# O'Reilly EPUB Downloader — Firefox and Chrome
 
-Download books from O'Reilly Learning Platform as EPUB files directly in your browser.
-
-## Features
-
-- Download complete EPUB files from O'Reilly Learning
-- Works directly in the browser (bypasses API restrictions)
-- Automatic metadata extraction
-- Real-time progress tracking
-- **Download cache** — files are cached in IndexedDB so re-downloading a book is near-instant
-- **Auto-resume** — interrupted downloads pick up where they left off
-- **Retry with backoff** — transient failures (429, 5xx, network errors) are retried up to 3 times
-- **Graceful degradation** — failed files don't abort the entire download; they're reported at the end
-- **Concurrency pool** — smarter parallel downloads that fill slots as they open (no rigid batching)
-- **Download history** — see previously downloaded books in the popup
-- Clean and simple UI
-
-## Prerequisites
-
-- Firefox browser
-- Active O'Reilly Learning subscription
-- Logged in to https://learning.oreilly.com
+Download a book from O'Reilly Learning as an EPUB using your signed-in browser
+session. Requires an active subscription, Firefox 115+ or Chrome 116+.
 
 ## Installation
 
-### Development Mode
+Download the ZIP for your browser from the [latest release](https://github.com/security-log/epub-downloader/releases/latest)
+and follow its installation and checksum instructions.
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/security-log/epub-downloader.git
-   cd epub-downloader
-   ```
+For Firefox development, open `about:debugging#/runtime/this-firefox`, select
+**Load Temporary Add-on**, and choose `extension/manifest.json`. This installation
+must be loaded again after restarting Firefox.
 
-2. Open Firefox and navigate to `about:debugging`
+For local builds, run from the repository root (requires Bash, `jq`, `zip`, and
+`sha256sum`):
 
-3. Click "This Firefox" → "Load Temporary Add-on"
-
-4. Navigate to `extension/` folder and select `manifest.json`
-
-### Production (when published)
-
-Install from Firefox Add-ons store (coming soon)
-
-## Usage
-
-1. Navigate to any book on O'Reilly Learning:
-   ```
-   https://learning.oreilly.com/library/view/{book-title}/{isbn}/
-   ```
-
-2. Click the extension icon in the toolbar
-
-3. Click "Download EPUB" button
-
-4. Wait for the download to complete
-
-5. The EPUB file will be saved to your downloads folder
-
-### Cache & Re-downloads
-
-When you download a book, all files are cached locally in IndexedDB. If you download the same book again:
-
-- **Download EPUB** — uses cached files, only fetches what's missing
-- **Rebuild from Cache** — builds the EPUB entirely from cached files (no network requests)
-- **Force Re-download** — ignores cache and fetches everything fresh
-- **Clear Cache** — removes cached files for the current book
-
-The popup also shows your **download history** with dates.
-
-## Project Structure
-
-```
-extension/
-├── manifest.json          # Extension manifest (Manifest V3)
-├── background.js          # Background service worker
-├── content.js             # Content script (runs on O'Reilly pages)
-├── popup.html             # Extension popup UI
-├── popup.js               # Popup logic
-├── download.js            # EPUB download logic
-├── cache.js               # IndexedDB cache layer
-├── pool.js                # Retry + concurrency pool utilities
-├── styles/
-│   └── popup.css          # Popup styles
-├── lib/
-│   └── jszip.min.js       # ZIP compression library
-├── fonts/                 # Space Grotesk + JetBrains Mono (woff2, SIL OFL)
-└── icons/
-    ├── icon-48.png        # Toolbar/extension icon (48x48)
-    └── icon-96.png        # High-DPI icon (96x96)
+```bash
+bash scripts/build-extension.sh firefox
+bash scripts/build-extension.sh chrome
 ```
 
-## Authentication
+The shared CI/local command replaces `build/` with the selected browser's files
+and creates a ZIP and SHA-256 checksum in the repository root. An optional second
+argument changes the package filename's version label, not the manifest version.
+After the Chrome build, open `chrome://extensions`, enable Developer mode, and
+select **Load unpacked** for `build/`.
 
-The extension automatically uses your browser's session cookies:
-- `orm-jwt` - JWT authentication token
-- Works seamlessly if you're logged in to O'Reilly
+## Usage and cache
 
-No need to manually extract cookies!
+1. Sign in to [O'Reilly Learning](https://learning.oreilly.com).
+2. Open a book page under `/library/view/{title}/{isbn}/`.
+3. Open the extension popup and select **Download EPUB**.
+4. Follow the browser's save dialog; check the popup for failed-file warnings.
 
-## Development
+The popup provides these controls:
 
-### Testing
+- **Download EPUB** reuses cached files and requests missing files.
+- **Re-download from source** requests all book files again. The current build
+  still merges cached content when assembling the EPUB; use **Clear cache** first
+  if you need to exclude previously stored content.
+- **Clear cache** deletes the current book's cached metadata, manifest, and files.
+- **Clear history** removes the local download history.
 
-1. Load the extension in Firefox (see Installation above)
-2. Open browser console (F12) → "Console" tab
-3. Navigate to an O'Reilly book page
-4. Check console for "Content script loaded" message
-5. Click extension icon and test download
+Re-download and cache controls appear when the current book has cached files.
+The popup asks for confirmation before starting a different book concurrently.
+Interrupted jobs are not automatically resumed; restarting a download can reuse
+files already persisted in IndexedDB. There is no dedicated cache-only rebuild
+button in the popup.
 
-### Debugging
+## Code structure
 
-- **Background script logs**: `about:debugging` → "Inspect" on the extension
-- **Content script logs**: Regular browser console (F12)
-- **Popup logs**: Right-click popup → "Inspect Element"
-- **Cache inspection**: Background script devtools → "Storage" → "IndexedDB" → `epub-downloader-cache`
+| File | Responsibility |
+| --- | --- |
+| `manifest.json` | Firefox manifest and source for the Chrome build transform. |
+| `compat.js` | Shares the `browser` namespace between Firefox and Chrome. |
+| `background.js` | Handles requests, download state, and session persistence. |
+| `content.js` | Extracts book information and the session token from the page. |
+| `download.js` | Retrieves book files, cleans HTML, constructs the EPUB, and records history. |
+| `cache.js` | Stores book metadata, expected file paths, and content in IndexedDB. |
+| `pool.js` | Limits concurrent tasks and retries transient fetch failures. |
+| `platform.js` | Adapts HTML parsing and blob URLs to each browser. |
+| `sw.js` | Loads shared background scripts in Chrome's service worker. |
+| `offscreen.html`, `offscreen.js` | Provide DOM parsing and blob URLs for Chrome. |
+| `popup.html`, `popup.js`, `styles/popup.css` | Popup controls, progress, warnings, and history. |
+| `lib/jszip.min.js` | Bundled ZIP library. |
 
-## How It Works
+Cached content is loaded into a `Map` before ZIP generation; this is not a streaming
+EPUB builder. The concurrency pool delivers each completion to its callback without
+collecting file contents in a results array. Memory usage has not been benchmarked.
 
-### 1. Book Detection (content.js)
-- Runs on all O'Reilly book pages
-- Extracts book metadata (title, ISBN, OURN)
-- Gets JWT token from cookies
-- Sends data to popup when requested
+Shared automation lives in `../scripts/build-extension.sh` and
+`../scripts/bump-version.py`. See the [project README](../README.md#releases) for
+release labels and publication behavior.
 
-### 2. Download Process (download.js)
-- **Metadata**: Fetch book info from `/api/v2/epubs/{ourn}/`
-- **Cache check**: Look up already-cached files in IndexedDB, skip re-downloading them
-- **File List**: Get all files from `/api/v2/epubs/{ourn}/files/`
-- **Download**: Fetch missing files via concurrency pool (10 parallel, auto-retry on failure)
-- **Cache write**: Each file is saved to IndexedDB immediately after download
-- **Build**: Create EPUB ZIP with proper structure using JSZip
-- **Save**: Use browser downloads API
-- **History**: Record the download in browser.storage.local
+## Verification and debugging
 
-### 3. EPUB Structure
-```
-book.epub (ZIP file)
-├── mimetype                 [uncompressed]
-├── META-INF/
-│   ├── container.xml
-│   └── com.apple.ibooks.display-options.xml
-└── OEBPS/
-    ├── content.opf
-    ├── toc.ncx
-    ├── *.xhtml              [chapters]
-    ├── *.css                [styles]
-    └── images/
-        └── *.png
-```
+Run the release checks from the repository root:
 
-## API Endpoints Used
-
-Based on extensive research (see [docs/RESEARCH-SUMMARY.md](../docs/RESEARCH-SUMMARY.md)):
-
-```
-GET /api/v2/epubs/{ourn}/                    # Book metadata
-GET /api/v2/epubs/{ourn}/files/?limit=100    # File list
-GET /api/v2/epubs/{ourn}/files/{filename}    # Individual file
+```bash
+python3 .github/check-releases.py
 ```
 
-## Known Issues
+These use temporary repositories to check version labels, release retries,
+changelog updates, browser selection, and local/CI packages and checksums.
+Open `../tests/pool.html` in a browser to check task concurrency and completion.
 
-- [ ] No settings page yet
+For browser testing, load the extension, download a book, reopen the popup during
+the download, and check cached re-downloads, forced re-downloads, history, and
+failed-file warnings. Automated checks do not replace a signed-in browser download
+test.
 
-## Roadmap
+- **Firefox background logs:** `about:debugging` → extension → **Inspect**.
+- **Chrome background logs:** `chrome://extensions` → extension → service worker inspector.
+- **Content logs:** the O'Reilly page's developer console.
+- **Popup logs:** inspect the extension popup.
+- **Cache:** background developer tools → IndexedDB → `epub-downloader-cache`.
 
-- [ ] Settings page (downloads folder, rate limiting, filename patterns)
-- [ ] Download queue for multiple books
-- [ ] Chrome compatibility (Manifest V3)
-- [ ] Publish to Firefox Add-ons
+## Authentication and API flow
 
-## Research
+`content.js` reads the `orm-jwt` cookie and passes the token with book information
+to the background. Requests use the O'Reilly API metadata endpoint
+`/api/v2/epubs/{ourn}/`, its paginated file listing, and the returned file URLs.
+The project has no remote backend.
 
-This extension was built after extensive research of the O'Reilly API. See:
-- [RESEARCH-SUMMARY.md](../docs/RESEARCH-SUMMARY.md) - Complete research documentation
-- [EPUB-DOWNLOAD-API.md](../docs/EPUB-DOWNLOAD-API.md) - API documentation
-
-### Why Extension vs CLI?
-
-The O'Reilly API only serves **full content** when accessed from an **active browser session**. Direct API calls (even with valid authentication) only receive 3.5% of content (snippets).
-
-The extension approach:
-- Runs in browser context with active session
-- Gets full content automatically
-- Bypasses all API restrictions
-- Simple user experience
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-MIT License - see [LICENSE](../LICENSE)
-
-## Disclaimer
-
-This tool is for **personal use only**. Respect O'Reilly's Terms of Service:
-- Only download books you have access to
-- Do not redistribute downloaded content
-- Use responsibly
-
-## Author
-
-**security-log**
+Use downloaded content only as permitted by its applicable terms and rights.
+See the [project README](../README.md) and [MIT license](../LICENSE).

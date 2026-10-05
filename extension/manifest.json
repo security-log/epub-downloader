@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "O'Reilly EPUB Downloader",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Download books from O'Reilly Learning Platform as EPUB files",
   "author": "Sebastian Emilio Kremarik | security-log",
   
@@ -21,7 +21,7 @@
   ],
 
   "background": {
-    "scripts": ["lib/jszip.min.js", "cache.js", "pool.js", "download.js", "background.js"]
+    "scripts": ["compat.js", "lib/jszip.min.js", "cache.js", "pool.js", "platform.js", "download.js", "background.js"]
   },
 
   "action": {
@@ -38,15 +38,8 @@
       "matches": [
         "https://learning.oreilly.com/library/view/*"
       ],
-      "js": ["content.js"],
+      "js": ["compat.js", "content.js"],
       "run_at": "document_idle"
-    }
-  ],
-
-  "web_accessible_resources": [
-    {
-      "resources": ["lib/jszip.min.js"],
-      "matches": ["https://learning.oreilly.com/*"]
     }
   ],
 

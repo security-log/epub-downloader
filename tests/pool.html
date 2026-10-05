@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Concurrency pool check</title>
+<pre id="results">Running...</pre>
+<script src="../extension/pool.js"></script>
+<script>
+(async () => {
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  let active = 0;
+  let peak = 0;
+  const completed = new Map();
+  const tasks = Array.from({ length: 5 }, (_, index) => async () => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    active--;
+    if (index === 2) throw Error('Expected task failure');
+    return { index };
+  });
+  const result = await new ConcurrencyPool(2, 1).run(tasks, (index, value, error) => {
+    assert(!completed.has(index), 'A task completed twice');
+    completed.set(index, error ? error.message : value.index);
+  });
+  assert(peak === 2 && active === 0, 'Concurrency limit or completion failed');
+  assert(completed.size === 5 && completed.get(2) === 'Expected task failure', 'Failed task stopped the pool');
+  for (const index of [0, 1, 3, 4]) assert(completed.get(index) === index, 'Result delivered to wrong task');
+  assert(result === undefined, 'Pool must not return collected file contents');
+  let called = false;
+  await new ConcurrencyPool().run([], () => { called = true; });
+  assert(!called, 'An empty pool called onComplete');
+  await new ConcurrencyPool(1, 0).run([async () => 'unused result']);
+  document.getElementById('results').textContent = 'PASS: concurrency, failures, callbacks, empty tasks and no retained results.';
+  document.body.dataset.finished = 'true';
+  document.body.dataset.failed = '0';
+})().catch(error => {
+  document.getElementById('results').textContent = error.stack;
+  document.body.dataset.finished = 'true';
+  document.body.dataset.failed = '1';
+});
+</script>
+</html>
